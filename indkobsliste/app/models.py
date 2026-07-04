@@ -1,4 +1,6 @@
 """
+Sidst opdateret: 2026-07-04
+
 Databasemodeller for indkøbsliste-appen.
 
 To tabeller i denne omgang:
@@ -48,3 +50,15 @@ class StoreUpdate(BaseModel):
     latitude: float
     longitude: float
     radius_m: int
+
+
+class ProximityState(SQLModel, table=True):
+    """
+    Enkelt-række-tabel der husker hvilken butik der sidst er blevet
+    notificeret om, så løbende positionstjek (fx hvert minut) ikke
+    sender samme besked igen og igen, mens man stadig er i nærheden.
+    Nulstilles når man bevæger sig væk fra alle butikker igen.
+    """
+    id: Optional[int] = Field(default=1, primary_key=True)
+    last_notified_store_id: Optional[int] = Field(default=None)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

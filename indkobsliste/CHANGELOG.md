@@ -19,3 +19,10 @@
 
 ## 1.0.5
    - Nyt endpoint /webhook/nearest-store: finder nærmeste butik via afstandsberegning i stedet for overlappende zoner   
+
+## 1.0.6
+   - Nyt endpoint /webhook/check-proximity: løbende positionstjek uden faste zoner, med indbygget "husk sidste advarsel" så du ikke spammes med gentagne beskeder
+
+## 1.0.7
+   - Nye eller opdaterende filer får nu Timestamp
+   

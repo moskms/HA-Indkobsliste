@@ -1,5 +1,7 @@
+# Sidst opdateret: 2026-07-04
 from contextlib import asynccontextmanager
 from typing import List
+from datetime import datetime
 import logging
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -7,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
 from app.database import init_db, get_session
-from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate
+from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate, ProximityState
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
 
@@ -194,6 +196,88 @@ def nearest_store(lat: float, lon: float, max_distance_m: int = 150, session: Se
         message = f"Du er ved {nearest.name}. Husk: {names}."
 
     return {
+        "store_name": nearest.name,
+        "distance_m": round(distance),
+        "item_count": len(items),
+        "items": [item.name for item in items],
+        "message": message,
+    }
+
+
+def _get_proximity_state(session: Session) -> ProximityState:
+    """Henter (eller opretter) den ene, faste tilstandsrække."""
+    state = session.get(ProximityState, 1)
+    if state is None:
+        state = ProximityState(id=1, last_notified_store_id=None)
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+    return state
+
+
+@app.get("/webhook/check-proximity")
+def check_proximity(
+    lat: float,
+    lon: float,
+    threshold_m: int = 50,
+    session: Session = Depends(get_session),
+):
+    """
+    Kaldes løbende (fx hvert minut) af Home Assistant med telefonens aktuelle
+    position - uafhængigt af HA-zoner. Finder nærmeste butik, og afgør om der
+    er tale om en NY ankomst (should_notify=True), eller om der allerede er
+    advaret om denne butik (should_notify=False), så gentagne kald ikke
+    spammer med samme besked mens man står stille i butikken.
+
+    Nulstiller automatisk "husket" tilstand når man bevæger sig væk igen,
+    så man kan blive advaret igen ved næste besøg.
+    """
+    stores = session.exec(select(Store)).all()
+    state = _get_proximity_state(session)
+
+    if not stores:
+        return {"should_notify": False, "store_name": None, "message": "Ingen butikker oprettet endnu."}
+
+    nearest = min(stores, key=lambda s: haversine_m(lat, lon, s.latitude, s.longitude))
+    distance = haversine_m(lat, lon, nearest.latitude, nearest.longitude)
+
+    if distance > threshold_m:
+        # Uden for rækkevidde af enhver butik - nulstil hukommelsen, så
+        # næste besøg (i denne eller en anden butik) giver besked igen.
+        if state.last_notified_store_id is not None:
+            state.last_notified_store_id = None
+            state.updated_at = datetime.utcnow()
+            session.add(state)
+            session.commit()
+        return {
+            "should_notify": False,
+            "store_name": None,
+            "distance_m": round(distance),
+            "message": "Ikke i nærheden af nogen kendt butik.",
+        }
+
+    # Inden for rækkevidde af 'nearest' - kun ny besked hvis det er en anden
+    # butik end sidst, eller hvis vi ikke har advaret om nogen for nylig.
+    is_new_arrival = state.last_notified_store_id != nearest.id
+
+    if is_new_arrival:
+        state.last_notified_store_id = nearest.id
+        state.updated_at = datetime.utcnow()
+        session.add(state)
+        session.commit()
+
+    items = session.exec(
+        select(Item).where(Item.done == False).order_by(Item.added_at)  # noqa: E712
+    ).all()
+
+    if not items:
+        message = f"Du har ikke noget på listen til {nearest.name}."
+    else:
+        names = ", ".join(item.name for item in items)
+        message = f"Du er ved {nearest.name}. Husk: {names}."
+
+    return {
+        "should_notify": is_new_arrival,
         "store_name": nearest.name,
         "distance_m": round(distance),
         "item_count": len(items),
