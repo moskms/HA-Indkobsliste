@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indkøbsliste</title>
+  <style>
+    body {
+      font-family: -apple-system, system-ui, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 1.4em;
+      margin-bottom: 16px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    li {
+      background: white;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      font-size: 1.1em;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    #status {
+      color: #888;
+      font-size: 0.9em;
+    }
+    #empty {
+      color: #888;
+      padding: 20px 0;
+      text-align: center;
+    }
+    #mic-button {
+      width: 100%;
+      padding: 18px;
+      margin: 16px 0;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 10px;
+      background: #2b6cb0;
+      color: white;
+      cursor: pointer;
+    }
+    #mic-button.listening {
+      background: #c53030;
+    }
+    #mic-button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    #voice-feedback {
+      text-align: center;
+      color: #555;
+      min-height: 1.4em;
+      margin-bottom: 8px;
+    }
+    .section-divider {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 24px 0;
+    }
+    h2 {
+      font-size: 1.1em;
+      margin-bottom: 10px;
+    }
+    #new-store-button {
+      width: 100%;
+      padding: 14px;
+      font-size: 1.05em;
+      border: none;
+      border-radius: 10px;
+      background: #2f855a;
+      color: white;
+      cursor: pointer;
+    }
+    #new-store-button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    #store-feedback {
+      text-align: center;
+      color: #555;
+      min-height: 1.4em;
+      margin: 8px 0;
+    }
+    .suggestion-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: white;
+      border: 1px solid #ddd;
+      padding: 12px 14px;
+      margin-bottom: 6px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    .suggestion-btn:hover {
+      background: #f0f0f0;
+    }
+    .suggestion-btn small {
+      display: block;
+      color: #888;
+      margin-top: 2px;
+    }
+    #manual-store-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    #manual-store-name {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+    }
+    #manual-store-save {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #2b6cb0;
+      color: white;
+      cursor: pointer;
+    }
+    #existing-stores {
+      color: #555;
+      font-size: 0.95em;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Indkøbsliste</h1>
+  <button id="mic-button">🎤 Tilføj vare</button>
+  <div id="voice-feedback"></div>
+  <div id="status">Henter...</div>
+  <ul id="list"></ul>
+  <div id="empty" style="display: none;">Listen er tom 🎉</div>
+
+  <hr class="section-divider">
+  <h2>Butikker</h2>
+  <div id="existing-stores">Henter...</div>
+  <button id="new-store-button">📍 Ny butik her</button>
+  <div id="store-feedback"></div>
+  <div id="store-suggestions"></div>
+  <div id="manual-store-row" style="display: none;">
+    <input type="text" id="manual-store-name" placeholder="Skriv butiksnavn selv...">
+    <button id="manual-store-save">Gem</button>
+  </div>
+
+  <script>
+    // Samme oprindelse som API'et (serveret af FastAPI), så relativ sti virker.
+    const API_BASE = "";
+
+    async function loadItems() {
+      const statusEl = document.getElementById("status");
+      const listEl = document.getElementById("list");
+      const emptyEl = document.getElementById("empty");
+
+      try {
+        const response = await fetch(`${API_BASE}/items`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const items = await response.json();
+
+        listEl.innerHTML = "";
+        if (items.length === 0) {
+          emptyEl.style.display = "block";
+        } else {
+          emptyEl.style.display = "none";
+          for (const item of items) {
+            const li = document.createElement("li");
+            li.textContent = item.name;
+            listEl.appendChild(li);
+          }
+        }
+        statusEl.textContent = `${items.length} vare(r) på listen · opdateret ${new Date().toLocaleTimeString("da-DK")}`;
+      } catch (err) {
+        statusEl.textContent = `Fejl: kunne ikke hente listen (${err.message})`;
+      }
+    }
+
+    loadItems();
+    // Opdater automatisk hvert 10. sekund, så listen føles "live"
+    setInterval(loadItems, 10000);
+
+    // --- Vis eksisterende butikker ---
+    const existingStoresEl = document.getElementById("existing-stores");
+
+    async function loadStores() {
+      try {
+        const response = await fetch(`${API_BASE}/stores`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const stores = await response.json();
+        existingStoresEl.textContent = stores.length === 0
+          ? "Ingen butikker oprettet endnu."
+          : stores.map(s => s.name).join(", ");
+      } catch (err) {
+        existingStoresEl.textContent = `Fejl: kunne ikke hente butikker (${err.message})`;
+      }
+    }
+
+    loadStores();
+
+    // --- Stemmeinput ---
+    const micButton = document.getElementById("mic-button");
+    const feedbackEl = document.getElementById("voice-feedback");
+
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      micButton.disabled = true;
+      micButton.textContent = "🎤 Ikke understøttet i denne browser";
+    } else {
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = "da-DK";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        micButton.classList.add("listening");
+        micButton.textContent = "🔴 Lytter...";
+        feedbackEl.textContent = "";
+      };
+
+      recognition.onend = () => {
+        micButton.classList.remove("listening");
+        micButton.textContent = "🎤 Tilføj vare";
+      };
+
+      recognition.onerror = (event) => {
+        feedbackEl.textContent = `Fejl: ${event.error}`;
+      };
+
+      recognition.onresult = async (event) => {
+        const spokenText = event.results[0][0].transcript.trim();
+        feedbackEl.textContent = `Hørte: "${spokenText}" - tilføjer...`;
+
+        try {
+          const response = await fetch(`${API_BASE}/items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: spokenText }),
+          });
+          if (!response.ok) {
+            throw new Error(`Server svarede med status ${response.status}`);
+          }
+          feedbackEl.textContent = `Tilføjet: "${spokenText}" ✓`;
+          loadItems();
+        } catch (err) {
+          feedbackEl.textContent = `Kunne ikke tilføje "${spokenText}": ${err.message}`;
+        }
+      };
+
+      micButton.addEventListener("click", () => {
+        recognition.start();
+      });
+    }
+
+    // --- Ny butik her ---
+    const newStoreButton = document.getElementById("new-store-button");
+    const storeFeedbackEl = document.getElementById("store-feedback");
+    const suggestionsEl = document.getElementById("store-suggestions");
+    const manualRowEl = document.getElementById("manual-store-row");
+    const manualNameInput = document.getElementById("manual-store-name");
+    const manualSaveButton = document.getElementById("manual-store-save");
+
+    let currentPosition = null; // gemmes så manuel gemning også kan bruge koordinaterne
+
+    async function saveStore(name, lat, lon) {
+      const response = await fetch(`${API_BASE}/stores`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, latitude: lat, longitude: lon }),
+      });
+      if (!response.ok) {
+        throw new Error(`Server svarede med status ${response.status}`);
+      }
+      return response.json();
+    }
+
+    function renderSuggestions(suggestions, source) {
+      suggestionsEl.innerHTML = "";
+      if (suggestions.length === 0) {
+        storeFeedbackEl.textContent = "Ingen butikker fundet her automatisk.";
+      } else {
+        storeFeedbackEl.textContent = `Fundet ${suggestions.length} forslag (kilde: ${source}). Vælg én, eller indtast selv nedenfor:`;
+        for (const s of suggestions) {
+          const btn = document.createElement("button");
+          btn.className = "suggestion-btn";
+          const distanceText = s.distance_m !== undefined ? ` · ${s.distance_m} m væk` : "";
+          btn.innerHTML = `${s.name}<small>${s.shop_type || "butik"}${distanceText}</small>`;
+          btn.addEventListener("click", async () => {
+            try {
+              await saveStore(s.name, s.latitude, s.longitude);
+              storeFeedbackEl.textContent = `Gemt: "${s.name}" ✓`;
+              suggestionsEl.innerHTML = "";
+              manualRowEl.style.display = "none";
+              loadStores();
+            } catch (err) {
+              storeFeedbackEl.textContent = `Kunne ikke gemme "${s.name}": ${err.message}`;
+            }
+          });
+          suggestionsEl.appendChild(btn);
+        }
+      }
+      manualRowEl.style.display = "flex";
+    }
+
+    newStoreButton.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        storeFeedbackEl.textContent = "Denne browser understøtter ikke GPS-placering.";
+        manualRowEl.style.display = "flex";
+        return;
+      }
+
+      newStoreButton.disabled = true;
+      storeFeedbackEl.textContent = "Henter din placering...";
+      suggestionsEl.innerHTML = "";
+      manualRowEl.style.display = "none";
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          currentPosition = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          };
+          storeFeedbackEl.textContent = `Placering hentet (nøjagtighed: ±${Math.round(position.coords.accuracy)} m). Søger efter butikker nær dig...`;
+
+          try {
+            const response = await fetch(
+              `${API_BASE}/stores/nearby?lat=${currentPosition.lat}&lon=${currentPosition.lon}`
+            );
+            if (!response.ok) {
+              throw new Error(`Server svarede med status ${response.status}`);
+            }
+            const data = await response.json();
+            renderSuggestions(data.suggestions, data.source);
+          } catch (err) {
+            storeFeedbackEl.textContent = `Automatisk søgning fejlede (${err.message}). Indtast butiksnavn selv:`;
+            manualRowEl.style.display = "flex";
+          } finally {
+            newStoreButton.disabled = false;
+          }
+        },
+        (geoErr) => {
+          storeFeedbackEl.textContent = `Kunne ikke hente din placering: ${geoErr.message}`;
+          manualRowEl.style.display = "flex";
+          newStoreButton.disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 15000 }
+      );
+    });
+
+    manualSaveButton.addEventListener("click", async () => {
+      const name = manualNameInput.value.trim();
+      if (!name) {
+        storeFeedbackEl.textContent = "Skriv et butiksnavn først.";
+        return;
+      }
+      if (!currentPosition) {
+        storeFeedbackEl.textContent = "Ingen placering hentet endnu - tryk 'Ny butik her' først.";
+        return;
+      }
+      try {
+        await saveStore(name, currentPosition.lat, currentPosition.lon);
+        storeFeedbackEl.textContent = `Gemt: "${name}" ✓`;
+        manualNameInput.value = "";
+        suggestionsEl.innerHTML = "";
+        manualRowEl.style.display = "none";
+        loadStores();
+      } catch (err) {
+        storeFeedbackEl.textContent = `Kunne ikke gemme "${name}": ${err.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
