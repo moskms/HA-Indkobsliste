@@ -30,8 +30,11 @@ def root():
 
 @app.post("/items", response_model=Item)
 def add_item(item_in: ItemCreate, session: Session = Depends(get_session)):
-    """Tilføjer en ny vare til indkøbslisten."""
-    item = Item(name=item_in.name.strip())
+    """Tilføjer en ny vare til indkøbslisten. Stort forbogstav sættes automatisk."""
+    name = item_in.name.strip()
+    if name:
+        name = name[0].upper() + name[1:]
+    item = Item(name=name)
     session.add(item)
     session.commit()
     session.refresh(item)

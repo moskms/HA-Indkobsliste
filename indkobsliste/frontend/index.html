@@ -27,6 +27,14 @@
       border-radius: 8px;
       font-size: 1.1em;
       box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      transition: background 0.15s;
+    }
+    li:hover {
+      background: #eefaf0;
+    }
+    li::before {
+      content: "☐ ";
+      color: #aaa;
     }
     #status {
       color: #888;
@@ -180,6 +188,9 @@
           for (const item of items) {
             const li = document.createElement("li");
             li.textContent = item.name;
+            li.style.cursor = "pointer";
+            li.title = "Tryk for at fjerne fra listen (lagt i kurven)";
+            li.addEventListener("click", () => markItemDone(item.id));
             listEl.appendChild(li);
           }
         }
@@ -192,6 +203,19 @@
     loadItems();
     // Opdater automatisk hvert 10. sekund, så listen føles "live"
     setInterval(loadItems, 10000);
+
+    async function markItemDone(itemId) {
+      const statusEl = document.getElementById("status");
+      try {
+        const response = await fetch(`${API_BASE}/items/${itemId}/done`, { method: "PATCH" });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        loadItems();
+      } catch (err) {
+        statusEl.textContent = `Fejl: kunne ikke fjerne varen (${err.message})`;
+      }
+    }
 
     // --- Vis eksisterende butikker ---
     const existingStoresEl = document.getElementById("existing-stores");
