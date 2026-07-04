@@ -223,7 +223,6 @@
       margin-top: 2px;
     }
     .calibrate-btn {
-      margin-top: 8px;
       padding: 8px 12px;
       border: 1px solid #f0ad4e;
       border-radius: 8px;
@@ -235,6 +234,28 @@
     .calibrate-btn.active {
       background: #f0ad4e;
       color: white;
+    }
+    .store-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .store-actions .calibrate-btn {
+      margin-top: 0;
+      flex: 1;
+    }
+    .remove-store-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: #c53030;
+      color: white;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+    .remove-store-btn:hover {
+      background: #a52626;
     }
     #existing-stores-list {
       margin-bottom: 20px;
@@ -546,7 +567,10 @@
         card.innerHTML = `
           <div class="store-name">${s.name}</div>
           <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m</div>
-          <button class="calibrate-btn ${isActive ? "active" : ""}" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
+          <div class="store-actions">
+            <button class="calibrate-btn ${isActive ? "active" : ""}" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
+            <button class="remove-store-btn">Fjern butik</button>
+          </div>
         `;
         card.querySelector(".calibrate-btn").addEventListener("click", () => {
           if (isActive) {
@@ -555,6 +579,7 @@
             startCalibration(s.id);
           }
         });
+        card.querySelector(".remove-store-btn").addEventListener("click", () => removeStore(s.id, s.name));
         existingStoresListEl.appendChild(card);
       }
     }
@@ -570,6 +595,21 @@
         renderStoreCards(lastLoadedStores);
       } catch (err) {
         existingStoresListEl.textContent = `Fejl: kunne ikke hente butikker (${err.message})`;
+      }
+    }
+
+    async function removeStore(storeId, storeName) {
+      const confirmed = confirm(`Er du sikker på at du vil fjerne "${storeName}"? Dette kan ikke fortrydes.`);
+      if (!confirmed) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/stores/${storeId}`, { method: "DELETE" });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        loadStores();
+      } catch (err) {
+        alert(`Kunne ikke fjerne "${storeName}": ${err.message}`);
       }
     }
 

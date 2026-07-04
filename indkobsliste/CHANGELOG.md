@@ -13,3 +13,8 @@
 
 ## 1.0.3
    - GPS-kalibrering: gå rundt i en butik for at få mere præcise koordinater og radius
+
+## 1.0.4
+   - Tilføjet "Fjern butik"-knap med bekræftelse
+
+   

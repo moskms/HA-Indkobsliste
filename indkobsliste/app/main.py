@@ -113,6 +113,16 @@ def update_store(store_id: int, update: StoreUpdate, session: Session = Depends(
     return store
 
 
+@app.delete("/stores/{store_id}", status_code=204)
+def delete_store(store_id: int, session: Session = Depends(get_session)):
+    """Sletter en butik permanent."""
+    store = session.get(Store, store_id)
+    if store is None:
+        raise HTTPException(status_code=404, detail="Butik ikke fundet")
+    session.delete(store)
+    session.commit()
+
+
 @app.get("/webhook/store-entered/{store_id}")
 def store_entered(store_id: int, session: Session = Depends(get_session)):
     """
