@@ -1,0 +1,12 @@
+# Changelog
+
+## 1.0.2
+- Tilføjet hamburgermenu med separate visninger for "Indkøbsliste" og "Butikker"
+- Butikker vises nu som kort med navn, koordinater og radius, i stedet for én komma-separeret linje
+
+## 1.0.1
+- Automatisk stort forbogstav på varenavne (fx "tomater" → "Tomater")
+- Klik på en vare i listen afkrydser/fjerner den (markerer som lagt i kurven)
+
+## 1.0.0
+- Første udgave: indkøbsliste med stemmeinput, manuel og automatisk (GPS/Overpass/Nominatim) butiksoprettelse, samt webhook-endpoint til Home Assistant-automationer
