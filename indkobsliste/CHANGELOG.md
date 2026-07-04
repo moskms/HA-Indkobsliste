@@ -17,4 +17,5 @@
 ## 1.0.4
    - Tilføjet "Fjern butik"-knap med bekræftelse
 
-   
+## 1.0.5
+   - Nyt endpoint /webhook/nearest-store: finder nærmeste butik via afstandsberegning i stedet for overlappende zoner   

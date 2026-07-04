@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from app.database import init_db, get_session
 from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate
 from app.overpass import find_nearby_shops
-from app.nominatim import find_nearby_shops_nominatim
+from app.nominatim import find_nearby_shops_nominatim, haversine_m
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
@@ -149,6 +149,53 @@ def store_entered(store_id: int, session: Session = Depends(get_session)):
 
     return {
         "store_name": store.name,
+        "item_count": len(items),
+        "items": [item.name for item in items],
+        "message": message,
+    }
+
+
+@app.get("/webhook/nearest-store")
+def nearest_store(lat: float, lon: float, max_distance_m: int = 150, session: Session = Depends(get_session)):
+    """
+    Kaldes af Home Assistant med telefonens aktuelle GPS-position (ikke en
+    zone-id). Finder den butik hvis gemte koordinat er tættest på, ved en
+    ren afstandsberegning - løser problemet med at butikker der ligger tæt
+    på hinanden (under GPS-nøjagtighedens opløsning) giver overlappende zoner.
+
+    max_distance_m er en sikkerhedsgrænse: hvis end ikke den nærmeste butik
+    er inden for denne afstand, antager vi du ikke reelt er ved nogen af dem.
+    """
+    stores = session.exec(select(Store)).all()
+    if not stores:
+        raise HTTPException(status_code=404, detail="Ingen butikker oprettet endnu")
+
+    nearest = min(stores, key=lambda s: haversine_m(lat, lon, s.latitude, s.longitude))
+    distance = haversine_m(lat, lon, nearest.latitude, nearest.longitude)
+
+    if distance > max_distance_m:
+        return {
+            "store_name": None,
+            "distance_m": round(distance),
+            "message": "Ikke i nærheden af nogen kendt butik.",
+        }
+
+    statement = (
+        select(Item)
+        .where(Item.done == False)  # noqa: E712
+        .order_by(Item.added_at)
+    )
+    items = session.exec(statement).all()
+
+    if not items:
+        message = f"Du har ikke noget på listen til {nearest.name}."
+    else:
+        names = ", ".join(item.name for item in items)
+        message = f"Du er ved {nearest.name}. Husk: {names}."
+
+    return {
+        "store_name": nearest.name,
+        "distance_m": round(distance),
         "item_count": len(items),
         "items": [item.name for item in items],
         "message": message,
