@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
 from app.database import init_db, get_session
-from app.models import Item, ItemCreate, Store, StoreCreate
+from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim
 
@@ -96,6 +96,21 @@ def add_store(store_in: StoreCreate, session: Session = Depends(get_session)):
 def list_stores(session: Session = Depends(get_session)):
     """Henter alle registrerede butikker."""
     return session.exec(select(Store).order_by(Store.name)).all()
+
+
+@app.patch("/stores/{store_id}", response_model=Store)
+def update_store(store_id: int, update: StoreUpdate, session: Session = Depends(get_session)):
+    """Opdaterer en butiks koordinater og radius, fx efter GPS-kalibrering."""
+    store = session.get(Store, store_id)
+    if store is None:
+        raise HTTPException(status_code=404, detail="Butik ikke fundet")
+    store.latitude = update.latitude
+    store.longitude = update.longitude
+    store.radius_m = update.radius_m
+    session.add(store)
+    session.commit()
+    session.refresh(store)
+    return store
 
 
 @app.get("/webhook/store-entered/{store_id}")

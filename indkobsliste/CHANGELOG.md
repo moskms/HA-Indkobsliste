@@ -10,3 +10,6 @@
 
 ## 1.0.0
 - Første udgave: indkøbsliste med stemmeinput, manuel og automatisk (GPS/Overpass/Nominatim) butiksoprettelse, samt webhook-endpoint til Home Assistant-automationer
+
+## 1.0.3
+   - GPS-kalibrering: gå rundt i en butik for at få mere præcise koordinater og radius

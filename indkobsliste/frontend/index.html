@@ -209,6 +209,10 @@
       border-radius: 8px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.1);
     }
+    .store-card.calibrating {
+      background: #fff8e1;
+      box-shadow: 0 0 0 2px #f0ad4e;
+    }
     .store-card .store-name {
       font-size: 1.05em;
       font-weight: 600;
@@ -217,6 +221,20 @@
       color: #888;
       font-size: 0.9em;
       margin-top: 2px;
+    }
+    .calibrate-btn {
+      margin-top: 8px;
+      padding: 8px 12px;
+      border: 1px solid #f0ad4e;
+      border-radius: 8px;
+      background: white;
+      color: #b5730a;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+    .calibrate-btn.active {
+      background: #f0ad4e;
+      color: white;
     }
     #existing-stores-list {
       margin-bottom: 20px;
@@ -417,6 +435,130 @@
     // --- Butikker: vis eksisterende med navn + koordinater ---
     const existingStoresListEl = document.getElementById("existing-stores-list");
 
+    // --- GPS-kalibrering: indsaml punkter mens man går rundt i butikken ---
+    let calibratingStoreId = null;
+    let calibrationWatchId = null;
+    let calibrationPoints = []; // [{lat, lon, accuracy}, ...]
+
+    function haversineMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function computeCentroidAndRadius(points) {
+      const lat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+      const lon = points.reduce((sum, p) => sum + p.lon, 0) / points.length;
+      let maxDist = 0;
+      for (const p of points) {
+        const d = haversineMeters(lat, lon, p.lat, p.lon);
+        if (d > maxDist) maxDist = d;
+      }
+      // Læg 10 m til som buffer, og sæt en fornuftig minimumsradius på 15 m
+      const radius = Math.max(15, Math.round(maxDist + 10));
+      return { lat, lon, radius };
+    }
+
+    function startCalibration(storeId) {
+      if (!navigator.geolocation) {
+        alert("Denne browser understøtter ikke GPS-placering.");
+        return;
+      }
+      calibratingStoreId = storeId;
+      calibrationPoints = [];
+      calibrationWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          calibrationPoints.push({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          });
+          renderStores(); // opdater punkt-tæller live
+        },
+        (err) => {
+          console.error("Kalibrering fejlede:", err.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 0 }
+      );
+      renderStores();
+    }
+
+    async function stopCalibration(storeId) {
+      if (calibrationWatchId !== null) {
+        navigator.geolocation.clearWatch(calibrationWatchId);
+      }
+      const points = calibrationPoints;
+      calibratingStoreId = null;
+      calibrationWatchId = null;
+      calibrationPoints = [];
+
+      if (points.length < 2) {
+        alert("For få GPS-punkter indsamlet (gå lidt rundt i butikken næste gang, før du stopper). Butikken er ikke ændret.");
+        renderStores();
+        return;
+      }
+
+      const { lat, lon, radius } = computeCentroidAndRadius(points);
+      try {
+        const response = await fetch(`${API_BASE}/stores/${storeId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ latitude: lat, longitude: lon, radius_m: radius }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+      } catch (err) {
+        alert(`Kunne ikke gemme kalibreringen: ${err.message}`);
+      }
+      loadStores();
+    }
+
+    function renderStores() {
+      // Genbruger sidst hentede butiksliste (gemt globalt) til at gentegne uden nyt kald
+      renderStoreCards(lastLoadedStores || []);
+    }
+
+    let lastLoadedStores = [];
+
+    function renderStoreCards(stores) {
+      existingStoresListEl.innerHTML = "";
+      if (stores.length === 0) {
+        existingStoresListEl.textContent = "Ingen butikker oprettet endnu.";
+        return;
+      }
+      for (const s of stores) {
+        const card = document.createElement("div");
+        card.className = "store-card" + (calibratingStoreId === s.id ? " calibrating" : "");
+        const lat = s.latitude.toFixed(5);
+        const lon = s.longitude.toFixed(5);
+
+        const isActive = calibratingStoreId === s.id;
+        const btnLabel = isActive
+          ? `⏹ Stop indsamling (${calibrationPoints.length} punkter)`
+          : "🎯 Kalibrér ved at gå rundt i butikken";
+        const btnDisabled = calibratingStoreId !== null && !isActive; // kun én ad gangen
+
+        card.innerHTML = `
+          <div class="store-name">${s.name}</div>
+          <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m</div>
+          <button class="calibrate-btn ${isActive ? "active" : ""}" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
+        `;
+        card.querySelector(".calibrate-btn").addEventListener("click", () => {
+          if (isActive) {
+            stopCalibration(s.id);
+          } else {
+            startCalibration(s.id);
+          }
+        });
+        existingStoresListEl.appendChild(card);
+      }
+    }
+
     async function loadStores() {
       existingStoresListEl.textContent = "Henter...";
       try {
@@ -424,24 +566,8 @@
         if (!response.ok) {
           throw new Error(`Server svarede med status ${response.status}`);
         }
-        const stores = await response.json();
-
-        existingStoresListEl.innerHTML = "";
-        if (stores.length === 0) {
-          existingStoresListEl.textContent = "Ingen butikker oprettet endnu.";
-        } else {
-          for (const s of stores) {
-            const card = document.createElement("div");
-            card.className = "store-card";
-            const lat = s.latitude.toFixed(5);
-            const lon = s.longitude.toFixed(5);
-            card.innerHTML = `
-              <div class="store-name">${s.name}</div>
-              <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m</div>
-            `;
-            existingStoresListEl.appendChild(card);
-          }
-        }
+        lastLoadedStores = await response.json();
+        renderStoreCards(lastLoadedStores);
       } catch (err) {
         existingStoresListEl.textContent = `Fejl: kunne ikke hente butikker (${err.message})`;
       }

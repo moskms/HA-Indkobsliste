@@ -40,3 +40,11 @@ class StoreCreate(BaseModel):
     latitude: float
     longitude: float
     radius_m: int = 50
+
+
+class StoreUpdate(BaseModel):
+    """Input-schema til PATCH /stores/{id} - bruges til at kalibrere koordinater/radius,
+    fx efter at have indsamlet GPS-punkter mens man gik rundt i butikken."""
+    latitude: float
+    longitude: float
+    radius_m: int
