@@ -222,6 +222,12 @@
       font-size: 0.9em;
       margin-top: 2px;
     }
+    .store-card .store-distance {
+      color: #2b6cb0;
+      font-size: 0.95em;
+      font-weight: 600;
+      margin-top: 4px;
+    }
     .calibrate-btn {
       padding: 8px 12px;
       border: 1px solid #f0ad4e;
@@ -330,6 +336,35 @@
       if (e.target === menuOverlay) closeMenu(); // klik udenfor panelet lukker
     });
 
+    let myLivePosition = null; // {lat, lon, accuracy} - opdateres løbende når Butikker-fanen er åben
+    let myLiveWatchId = null;
+
+    function startLiveTracking() {
+      if (!navigator.geolocation || myLiveWatchId !== null) return;
+      myLiveWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          myLivePosition = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          };
+          renderStores();
+        },
+        (err) => {
+          console.error("Live-sporing fejlede:", err.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000 }
+      );
+    }
+
+    function stopLiveTracking() {
+      if (myLiveWatchId !== null) {
+        navigator.geolocation.clearWatch(myLiveWatchId);
+        myLiveWatchId = null;
+      }
+      myLivePosition = null;
+    }
+
     function switchView(viewName) {
       for (const view of views) {
         view.classList.toggle("active", view.id === `view-${viewName}`);
@@ -341,6 +376,9 @@
       closeMenu();
       if (viewName === "stores") {
         loadStores();
+        startLiveTracking();
+      } else {
+        stopLiveTracking();
       }
     }
 
@@ -564,9 +602,18 @@
           : "🎯 Kalibrér ved at gå rundt i butikken";
         const btnDisabled = calibratingStoreId !== null && !isActive; // kun én ad gangen
 
+        let distanceHtml = "";
+        if (myLivePosition) {
+          const dist = Math.round(
+            haversineMeters(myLivePosition.lat, myLivePosition.lon, s.latitude, s.longitude)
+          );
+          distanceHtml = `<div class="store-distance">📍 ${dist} m fra dig lige nu (±${Math.round(myLivePosition.accuracy)} m)</div>`;
+        }
+
         card.innerHTML = `
           <div class="store-name">${s.name}</div>
           <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m</div>
+          ${distanceHtml}
           <div class="store-actions">
             <button class="calibrate-btn ${isActive ? "active" : ""}" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
             <button class="remove-store-btn">Fjern butik</button>

@@ -25,4 +25,6 @@
 
 ## 1.0.7
    - Nye eller opdaterende filer får nu Timestamp
-   
+
+## 1.0.72
+   - Live afstandsvisning til hver butik under "Butikker"
