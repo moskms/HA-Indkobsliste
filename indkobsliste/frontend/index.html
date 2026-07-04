@@ -9,12 +9,81 @@
       font-family: -apple-system, system-ui, sans-serif;
       background: #f4f4f4;
       margin: 0;
+      padding: 0;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: white;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    #hamburger-button {
+      background: none;
+      border: none;
+      font-size: 1.6em;
+      cursor: pointer;
+      padding: 4px 8px;
+      line-height: 1;
+    }
+    header h1 {
+      font-size: 1.3em;
+      margin: 0;
+    }
+    main {
       padding: 16px;
+      max-width: 700px;
+      margin: 0 auto;
     }
-    h1 {
-      font-size: 1.4em;
-      margin-bottom: 16px;
+
+    /* --- Slide-ud menu --- */
+    #menu-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 20;
     }
+    #menu-overlay.open {
+      display: block;
+    }
+    #menu-panel {
+      background: white;
+      width: 240px;
+      height: 100%;
+      box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+      padding: 16px 0;
+    }
+    .menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 14px 20px;
+      font-size: 1.05em;
+      cursor: pointer;
+    }
+    .menu-item:hover {
+      background: #f0f0f0;
+    }
+    .menu-item.active {
+      background: #e8f0fe;
+      font-weight: 600;
+    }
+
+    /* --- Visninger --- */
+    .view {
+      display: none;
+    }
+    .view.active {
+      display: block;
+    }
+
     ul {
       list-style: none;
       padding: 0;
@@ -48,7 +117,7 @@
     #mic-button {
       width: 100%;
       padding: 18px;
-      margin: 16px 0;
+      margin: 0 0 16px 0;
       font-size: 1.2em;
       border: none;
       border-radius: 10px;
@@ -69,14 +138,9 @@
       min-height: 1.4em;
       margin-bottom: 8px;
     }
-    .section-divider {
-      border: none;
-      border-top: 1px solid #ddd;
-      margin: 24px 0;
-    }
     h2 {
-      font-size: 1.1em;
-      margin-bottom: 10px;
+      font-size: 1.2em;
+      margin: 0 0 14px 0;
     }
     #new-store-button {
       width: 100%;
@@ -138,36 +202,114 @@
       color: white;
       cursor: pointer;
     }
-    #existing-stores {
-      color: #555;
-      font-size: 0.95em;
-      margin-bottom: 12px;
+    .store-card {
+      background: white;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .store-card .store-name {
+      font-size: 1.05em;
+      font-weight: 600;
+    }
+    .store-card .store-coords {
+      color: #888;
+      font-size: 0.9em;
+      margin-top: 2px;
+    }
+    #existing-stores-list {
+      margin-bottom: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>Indkøbsliste</h1>
-  <button id="mic-button">🎤 Tilføj vare</button>
-  <div id="voice-feedback"></div>
-  <div id="status">Henter...</div>
-  <ul id="list"></ul>
-  <div id="empty" style="display: none;">Listen er tom 🎉</div>
+  <header>
+    <button id="hamburger-button" aria-label="Menu">☰</button>
+    <h1 id="page-title">Indkøbsliste</h1>
+  </header>
 
-  <hr class="section-divider">
-  <h2>Butikker</h2>
-  <div id="existing-stores">Henter...</div>
-  <button id="new-store-button">📍 Ny butik her</button>
-  <div id="store-feedback"></div>
-  <div id="store-suggestions"></div>
-  <div id="manual-store-row" style="display: none;">
-    <input type="text" id="manual-store-name" placeholder="Skriv butiksnavn selv...">
-    <button id="manual-store-save">Gem</button>
+  <div id="menu-overlay">
+    <div id="menu-panel">
+      <button class="menu-item active" data-view="list">🛒 Indkøbsliste</button>
+      <button class="menu-item" data-view="stores">🏬 Butikker</button>
+    </div>
   </div>
+
+  <main>
+    <!-- Visning: Indkøbsliste -->
+    <div id="view-list" class="view active">
+      <button id="mic-button">🎤 Tilføj vare</button>
+      <div id="voice-feedback"></div>
+      <div id="status">Henter...</div>
+      <ul id="list"></ul>
+      <div id="empty" style="display: none;">Listen er tom 🎉</div>
+    </div>
+
+    <!-- Visning: Butikker -->
+    <div id="view-stores" class="view">
+      <h2>Dine butikker</h2>
+      <div id="existing-stores-list">Henter...</div>
+
+      <h2>Tilføj ny butik</h2>
+      <button id="new-store-button">📍 Ny butik her</button>
+      <div id="store-feedback"></div>
+      <div id="store-suggestions"></div>
+      <div id="manual-store-row" style="display: none;">
+        <input type="text" id="manual-store-name" placeholder="Skriv butiksnavn selv...">
+        <button id="manual-store-save">Gem</button>
+      </div>
+    </div>
+  </main>
 
   <script>
     // Samme oprindelse som API'et (serveret af FastAPI), så relativ sti virker.
     const API_BASE = "";
 
+    // --- Menu og visningsskift ---
+    const hamburgerButton = document.getElementById("hamburger-button");
+    const menuOverlay = document.getElementById("menu-overlay");
+    const menuPanel = document.getElementById("menu-panel");
+    const pageTitle = document.getElementById("page-title");
+    const menuItems = document.querySelectorAll(".menu-item");
+    const views = document.querySelectorAll(".view");
+
+    const VIEW_TITLES = {
+      list: "Indkøbsliste",
+      stores: "Butikker",
+    };
+
+    function openMenu() {
+      menuOverlay.classList.add("open");
+    }
+    function closeMenu() {
+      menuOverlay.classList.remove("open");
+    }
+
+    hamburgerButton.addEventListener("click", openMenu);
+    menuOverlay.addEventListener("click", (e) => {
+      if (e.target === menuOverlay) closeMenu(); // klik udenfor panelet lukker
+    });
+
+    function switchView(viewName) {
+      for (const view of views) {
+        view.classList.toggle("active", view.id === `view-${viewName}`);
+      }
+      for (const item of menuItems) {
+        item.classList.toggle("active", item.dataset.view === viewName);
+      }
+      pageTitle.textContent = VIEW_TITLES[viewName] || "Indkøbsliste";
+      closeMenu();
+      if (viewName === "stores") {
+        loadStores();
+      }
+    }
+
+    for (const item of menuItems) {
+      item.addEventListener("click", () => switchView(item.dataset.view));
+    }
+
+    // --- Indkøbsliste ---
     async function loadItems() {
       const statusEl = document.getElementById("status");
       const listEl = document.getElementById("list");
@@ -216,26 +358,6 @@
         statusEl.textContent = `Fejl: kunne ikke fjerne varen (${err.message})`;
       }
     }
-
-    // --- Vis eksisterende butikker ---
-    const existingStoresEl = document.getElementById("existing-stores");
-
-    async function loadStores() {
-      try {
-        const response = await fetch(`${API_BASE}/stores`);
-        if (!response.ok) {
-          throw new Error(`Server svarede med status ${response.status}`);
-        }
-        const stores = await response.json();
-        existingStoresEl.textContent = stores.length === 0
-          ? "Ingen butikker oprettet endnu."
-          : stores.map(s => s.name).join(", ");
-      } catch (err) {
-        existingStoresEl.textContent = `Fejl: kunne ikke hente butikker (${err.message})`;
-      }
-    }
-
-    loadStores();
 
     // --- Stemmeinput ---
     const micButton = document.getElementById("mic-button");
@@ -290,6 +412,39 @@
       micButton.addEventListener("click", () => {
         recognition.start();
       });
+    }
+
+    // --- Butikker: vis eksisterende med navn + koordinater ---
+    const existingStoresListEl = document.getElementById("existing-stores-list");
+
+    async function loadStores() {
+      existingStoresListEl.textContent = "Henter...";
+      try {
+        const response = await fetch(`${API_BASE}/stores`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const stores = await response.json();
+
+        existingStoresListEl.innerHTML = "";
+        if (stores.length === 0) {
+          existingStoresListEl.textContent = "Ingen butikker oprettet endnu.";
+        } else {
+          for (const s of stores) {
+            const card = document.createElement("div");
+            card.className = "store-card";
+            const lat = s.latitude.toFixed(5);
+            const lon = s.longitude.toFixed(5);
+            card.innerHTML = `
+              <div class="store-name">${s.name}</div>
+              <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m</div>
+            `;
+            existingStoresListEl.appendChild(card);
+          }
+        }
+      } catch (err) {
+        existingStoresListEl.textContent = `Fejl: kunne ikke hente butikker (${err.message})`;
+      }
     }
 
     // --- Ny butik her ---
