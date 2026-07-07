@@ -1,5 +1,5 @@
 name: "Indkøbsliste"
-version: "1.0.8"
+version: "1.0.73"
 slug: "indkobsliste"
 description: "Nye eller opdaterende filer får nu Timestamp"
 arch:
