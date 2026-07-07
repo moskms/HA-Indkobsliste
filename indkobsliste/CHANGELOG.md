@@ -32,3 +32,6 @@
 ## 1.0.73
    - Rettet fejl: /stores/nearby var utilsigtet holdt op med at virke
    - Ny "Diagnostik"-fane: viser seneste positionstjek fra Home Assistant direkte i appen
+
+## 1.0.74
+   - Placering vises nu på forsiden hvor langt fra Hjem

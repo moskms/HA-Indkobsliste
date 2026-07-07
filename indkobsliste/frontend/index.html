@@ -33,6 +33,14 @@
     header h1 {
       font-size: 1.3em;
       margin: 0;
+      flex: 1;
+    }
+    #header-position {
+      font-size: 0.85em;
+      color: #2b6cb0;
+      font-weight: 600;
+      white-space: nowrap;
+      text-align: right;
     }
     main {
       padding: 16px;
@@ -272,6 +280,7 @@
   <header>
     <button id="hamburger-button" aria-label="Menu">☰</button>
     <h1 id="page-title">Indkøbsliste</h1>
+    <div id="header-position">📍 -</div>
   </header>
 
   <div id="menu-overlay">
@@ -438,6 +447,51 @@
     loadItems();
     // Opdater automatisk hvert 10. sekund, så listen føles "live"
     setInterval(loadItems, 10000);
+
+    // --- Header: live afstand fra "start" (typisk hjem, hvis appen åbnes hjemmefra) ---
+    // Simpelt diagnostik-værktøj: første GPS-fix bruges som referencepunkt,
+    // og herefter vises løbende hvor langt du har bevæget dig fra det punkt.
+    // Hvis tallet ikke ændrer sig når man rent faktisk bevæger sig, er det
+    // et tegn på at telefonens GPS/lokationsdeling ikke opdaterer korrekt.
+    let headerReferencePosition = null;
+    const headerPositionEl = document.getElementById("header-position");
+
+    function haversineMetersGlobal(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          const current = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          };
+          if (!headerReferencePosition) {
+            headerReferencePosition = current;
+            headerPositionEl.textContent = `📍 0 m fra start (±${Math.round(current.accuracy)} m)`;
+          } else {
+            const dist = Math.round(
+              haversineMetersGlobal(headerReferencePosition.lat, headerReferencePosition.lon, current.lat, current.lon)
+            );
+            headerPositionEl.textContent = `📍 ${dist} m fra start (±${Math.round(current.accuracy)} m)`;
+          }
+        },
+        (err) => {
+          headerPositionEl.textContent = `📍 GPS-fejl: ${err.message}`;
+        },
+        { enableHighAccuracy: true, maximumAge: 10000 }
+      );
+    } else {
+      headerPositionEl.textContent = "📍 GPS ikke understøttet";
+    }
 
     async function markItemDone(itemId) {
       const statusEl = document.getElementById("status");
