@@ -29,6 +29,6 @@
 ## 1.0.72
    - Live afstandsvisning til hver butik under "Butikker"
 
-## 1.0.73
+## 1.0.8
    - Rettet fejl: /stores/nearby var utilsigtet holdt op med at virke
    - Ny "Diagnostik"-fane: viser seneste positionstjek fra Home Assistant direkte i appen
