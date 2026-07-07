@@ -62,3 +62,19 @@ class ProximityState(SQLModel, table=True):
     id: Optional[int] = Field(default=1, primary_key=True)
     last_notified_store_id: Optional[int] = Field(default=None)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProximityCheckLog(SQLModel, table=True):
+    """
+    Logger hvert kald til /webhook/check-proximity, til diagnostik.
+    Gør det muligt at se direkte i appen om Home Assistant rent faktisk
+    kalder endpointet regelmæssigt, og hvilke koordinater den sender -
+    uden at skulle grave i HA's egne logs/historik.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    checked_at: datetime = Field(default_factory=datetime.utcnow)
+    lat: float
+    lon: float
+    nearest_store_name: Optional[str] = Field(default=None)
+    distance_m: Optional[int] = Field(default=None)
+    should_notify: bool = Field(default=False)

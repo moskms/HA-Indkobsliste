@@ -1,6 +1,6 @@
 # Sidst opdateret: 2026-07-04
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 import logging
 
@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
 from app.database import init_db, get_session
-from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate, ProximityState
+from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate, ProximityState, ProximityCheckLog
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
 
@@ -204,6 +204,35 @@ def nearest_store(lat: float, lon: float, max_distance_m: int = 150, session: Se
     }
 
 
+def _log_proximity_check(
+    session: Session,
+    lat: float,
+    lon: float,
+    nearest_store_name: Optional[str],
+    distance_m: Optional[int],
+    should_notify: bool,
+) -> None:
+    """Logger et proximity-tjek til diagnostik, og beholder kun de seneste 200 rækker."""
+    log_entry = ProximityCheckLog(
+        lat=lat,
+        lon=lon,
+        nearest_store_name=nearest_store_name,
+        distance_m=distance_m,
+        should_notify=should_notify,
+    )
+    session.add(log_entry)
+    session.commit()
+
+    # Ryd op: behold kun de seneste 200 rækker, så tabellen ikke vokser uendeligt
+    all_logs = session.exec(
+        select(ProximityCheckLog).order_by(ProximityCheckLog.checked_at.desc())
+    ).all()
+    for old_entry in all_logs[200:]:
+        session.delete(old_entry)
+    if len(all_logs) > 200:
+        session.commit()
+
+
 def _get_proximity_state(session: Session) -> ProximityState:
     """Henter (eller opretter) den ene, faste tilstandsrække."""
     state = session.get(ProximityState, 1)
@@ -249,6 +278,7 @@ def check_proximity(
             state.updated_at = datetime.utcnow()
             session.add(state)
             session.commit()
+        _log_proximity_check(session, lat, lon, nearest.name, round(distance), False)
         return {
             "should_notify": False,
             "store_name": None,
@@ -276,6 +306,8 @@ def check_proximity(
         names = ", ".join(item.name for item in items)
         message = f"Du er ved {nearest.name}. Husk: {names}."
 
+    _log_proximity_check(session, lat, lon, nearest.name, round(distance), is_new_arrival)
+
     return {
         "should_notify": is_new_arrival,
         "store_name": nearest.name,
@@ -286,8 +318,7 @@ def check_proximity(
     }
 
 
-# Serverer den simple frontend-side. Tilgås via /app/index.html
-app.mount("/app", StaticFiles(directory="frontend", html=True), name="frontend")
+@app.get("/stores/nearby")
 def stores_nearby(lat: float, lon: float, radius_m: int = 100):
     """
     Slår op efter butikker nær den angivne koordinat.
@@ -313,3 +344,36 @@ def stores_nearby(lat: float, lon: float, radius_m: int = 100):
                     f"Nominatim: {nominatim_exc}"
                 ),
             )
+
+
+@app.get("/diagnostics/proximity-log")
+def proximity_log(limit: int = 30, session: Session = Depends(get_session)):
+    """
+    Viser de seneste proximity-tjek, til fejlsøgning direkte i appen.
+    Gør det muligt at se om Home Assistant rent faktisk kalder
+    /webhook/check-proximity regelmæssigt, og hvilke koordinater den
+    sender - uden at skulle grave i HA's egne logs.
+    """
+    logs = session.exec(
+        select(ProximityCheckLog)
+        .order_by(ProximityCheckLog.checked_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "count": len(logs),
+        "entries": [
+            {
+                "checked_at": log.checked_at.isoformat(),
+                "lat": log.lat,
+                "lon": log.lon,
+                "nearest_store_name": log.nearest_store_name,
+                "distance_m": log.distance_m,
+                "should_notify": log.should_notify,
+            }
+            for log in logs
+        ],
+    }
+
+
+# Serverer den simple frontend-side. Tilgås via /app/index.html
+app.mount("/app", StaticFiles(directory="frontend", html=True), name="frontend")

@@ -278,6 +278,7 @@
     <div id="menu-panel">
       <button class="menu-item active" data-view="list">🛒 Indkøbsliste</button>
       <button class="menu-item" data-view="stores">🏬 Butikker</button>
+      <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
     </div>
   </div>
 
@@ -305,6 +306,17 @@
         <button id="manual-store-save">Gem</button>
       </div>
     </div>
+
+    <!-- Visning: Diagnostik -->
+    <div id="view-diagnostics" class="view">
+      <h2>Seneste positionstjek fra Home Assistant</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Viser de seneste 30 kald til /webhook/check-proximity - bekræfter om HA
+        rent faktisk kalder endpointet, og hvilke koordinater den sender.
+      </p>
+      <button id="refresh-diagnostics-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer;">🔄 Opdater</button>
+      <div id="diagnostics-list">Henter...</div>
+    </div>
   </main>
 
   <script>
@@ -322,6 +334,7 @@
     const VIEW_TITLES = {
       list: "Indkøbsliste",
       stores: "Butikker",
+      diagnostics: "Diagnostik",
     };
 
     function openMenu() {
@@ -379,6 +392,9 @@
         startLiveTracking();
       } else {
         stopLiveTracking();
+      }
+      if (viewName === "diagnostics") {
+        loadDiagnostics();
       }
     }
 
@@ -776,6 +792,48 @@
         storeFeedbackEl.textContent = `Kunne ikke gemme "${name}": ${err.message}`;
       }
     });
+
+    // --- Diagnostik ---
+    const diagnosticsListEl = document.getElementById("diagnostics-list");
+    const refreshDiagnosticsButton = document.getElementById("refresh-diagnostics-button");
+
+    async function loadDiagnostics() {
+      diagnosticsListEl.textContent = "Henter...";
+      try {
+        const response = await fetch(`${API_BASE}/diagnostics/proximity-log?limit=30`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+
+        if (data.entries.length === 0) {
+          diagnosticsListEl.textContent = "Ingen tjek registreret endnu - Home Assistant har enten ikke kaldt endpointet, eller automationen er ikke sat op korrekt.";
+          return;
+        }
+
+        diagnosticsListEl.innerHTML = "";
+        for (const entry of data.entries) {
+          const row = document.createElement("div");
+          row.className = "store-card";
+          const time = new Date(entry.checked_at).toLocaleString("da-DK");
+          const notifyBadge = entry.should_notify
+            ? '<span style="color:#2f855a; font-weight:600;">✓ NOTIFICERET</span>'
+            : '<span style="color:#888;">-</span>';
+          row.innerHTML = `
+            <div class="store-name">${time}</div>
+            <div class="store-coords">
+              Position: ${entry.lat.toFixed(6)}, ${entry.lon.toFixed(6)}<br>
+              Nærmeste: ${entry.nearest_store_name || "ingen"} · ${entry.distance_m ?? "?"} m · ${notifyBadge}
+            </div>
+          `;
+          diagnosticsListEl.appendChild(row);
+        }
+      } catch (err) {
+        diagnosticsListEl.textContent = `Fejl: kunne ikke hente diagnostik (${err.message})`;
+      }
+    }
+
+    refreshDiagnosticsButton.addEventListener("click", loadDiagnostics);
   </script>
 </body>
 </html>
