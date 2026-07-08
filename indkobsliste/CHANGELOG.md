@@ -41,3 +41,5 @@
 
 ## 1.0.77
    - Rettet: diagnostik-endpoint svarer nu altid 200, så Cloudflare ikke overskriver vores fejlbeskeder med sin egen fejlside
+
+   
