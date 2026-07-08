@@ -10,7 +10,7 @@ To tabeller i denne omgang:
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel 
 from sqlmodel import SQLModel, Field
 
 
