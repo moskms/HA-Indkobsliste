@@ -13,3 +13,4 @@ ports:
 ports_description:
   8000/tcp: "Web-grænseflade og API"
 webui: "http://[HOST]:[PORT:8000]/app/index.html"
+homeassistant_api: true
