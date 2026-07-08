@@ -1,7 +1,7 @@
 name: "Indkøbsliste"
-version: "1.0.74"
+version: "1.0.75"
 slug: "indkobsliste"
-description: "Nye eller opdaterende filer får nu Timestamp"
+description: "Indkøbsliste med stemmeinput og automatisk butiksopslag"
 arch:
   - aarch64
   - amd64

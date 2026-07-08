@@ -35,3 +35,6 @@
 
 ## 1.0.74
    - Placering vises nu på forsiden hvor langt fra Hjem
+
+## 1.0.75
+   - Ny: viser HA's egen device_tracker-position i header, til direkte sammenligning med telefonens live GPS

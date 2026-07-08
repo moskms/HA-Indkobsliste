@@ -3,6 +3,9 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
 import logging
+import os
+
+import requests
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -344,6 +347,48 @@ def stores_nearby(lat: float, lon: float, radius_m: int = 100):
                     f"Nominatim: {nominatim_exc}"
                 ),
             )
+
+
+@app.get("/diagnostics/ha-position")
+def ha_position(entity_id: str = "device_tracker.samsung_s23_ultra"):
+    """
+    Spørger Home Assistants EGEN API om hvad den lige nu har registreret
+    som position for en given device_tracker-enhed. Bruges til at
+    sammenligne "hvad telefonens browser selv ser" (vist i header'en)
+    med "hvad HA rent faktisk har liggende" - hvis de to afviger
+    markant, bekræfter det at HA's baggrunds-lokationsopdatering halter.
+
+    Kræver 'homeassistant_api: true' i config.yaml, som automatisk giver
+    denne container adgang via SUPERVISOR_TOKEN miljøvariablen.
+    """
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        raise HTTPException(
+            status_code=500,
+            detail="SUPERVISOR_TOKEN mangler - er 'homeassistant_api: true' sat i config.yaml?",
+        )
+
+    url = f"http://supervisor/core/api/states/{entity_id}"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Kunne ikke kontakte Home Assistant API: {exc}")
+
+    data = response.json()
+    attributes = data.get("attributes", {})
+
+    return {
+        "entity_id": entity_id,
+        "state": data.get("state"),
+        "latitude": attributes.get("latitude"),
+        "longitude": attributes.get("longitude"),
+        "gps_accuracy": attributes.get("gps_accuracy"),
+        "last_changed": data.get("last_changed"),
+        "last_updated": data.get("last_updated"),
+    }
 
 
 @app.get("/diagnostics/proximity-log")
