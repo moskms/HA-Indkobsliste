@@ -509,11 +509,12 @@
     async function loadHaPosition() {
       try {
         const response = await fetch(`${API_BASE}/diagnostics/ha-position`);
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.detail || `status ${response.status}`);
-        }
         const data = await response.json();
+
+        if (!data.success) {
+          headerHaPositionEl.textContent = `HA: fejl (${data.error})`;
+          return;
+        }
         if (data.latitude == null) {
           headerHaPositionEl.textContent = "HA: ingen position";
           return;

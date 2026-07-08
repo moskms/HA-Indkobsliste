@@ -360,13 +360,18 @@ def ha_position(entity_id: str = "device_tracker.samsung_s23_ultra"):
 
     Kræver 'homeassistant_api: true' i config.yaml, som automatisk giver
     denne container adgang via SUPERVISOR_TOKEN miljøvariablen.
+
+    Svarer altid med HTTP 200, selv ved fejl - fejldetaljer ligger i stedet
+    i "success"/"error"-felterne. Det er bevidst: Cloudflare erstatter
+    automatisk 4xx/5xx-svar med sin egen generiske fejlside, hvilket ville
+    skjule vores faktiske, brugbare fejlbesked.
     """
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
-        raise HTTPException(
-            status_code=500,
-            detail="SUPERVISOR_TOKEN mangler - er 'homeassistant_api: true' sat i config.yaml?",
-        )
+        return {
+            "success": False,
+            "error": "SUPERVISOR_TOKEN mangler - er 'homeassistant_api: true' sat i config.yaml, og er appen genstartet siden?",
+        }
 
     url = f"http://supervisor/core/api/states/{entity_id}"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -375,12 +380,13 @@ def ha_position(entity_id: str = "device_tracker.samsung_s23_ultra"):
         response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Kunne ikke kontakte Home Assistant API: {exc}")
+        return {"success": False, "error": f"Kunne ikke kontakte Home Assistant API: {exc}"}
 
     data = response.json()
     attributes = data.get("attributes", {})
 
     return {
+        "success": True,
         "entity_id": entity_id,
         "state": data.get("state"),
         "latitude": attributes.get("latitude"),
