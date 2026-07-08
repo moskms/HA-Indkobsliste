@@ -426,5 +426,69 @@ def proximity_log(limit: int = 30, session: Session = Depends(get_session)):
     }
 
 
+@app.get("/backup")
+def create_backup(session: Session = Depends(get_session)):
+    """
+    Eksporterer alle butikker og varer som JSON. Brug denne FØR risikable
+    ændringer (versionsopgraderinger, geninstallation af appen, HA-opdateringer),
+    så data altid kan gendannes, uanset hvad der går galt på HA-siden.
+    """
+    stores = session.exec(select(Store)).all()
+    items = session.exec(select(Item)).all()
+
+    return {
+        "backup_created_at": datetime.utcnow().isoformat(),
+        "stores": [
+            {
+                "name": s.name,
+                "latitude": s.latitude,
+                "longitude": s.longitude,
+                "radius_m": s.radius_m,
+                "osm_id": s.osm_id,
+            }
+            for s in stores
+        ],
+        "items": [
+            {"name": i.name, "done": i.done}
+            for i in items
+        ],
+    }
+
+
+@app.post("/restore")
+def restore_backup(backup: dict, session: Session = Depends(get_session)):
+    """
+    Gendanner butikker og varer fra en JSON-backup (fra /backup).
+    Tilføjer til eksisterende data - sletter IKKE noget i forvejen,
+    så det er sikkert at bruge selvom der allerede er lidt data.
+    """
+    stores_added = 0
+    items_added = 0
+
+    for store_data in backup.get("stores", []):
+        store = Store(
+            name=store_data["name"],
+            latitude=store_data["latitude"],
+            longitude=store_data["longitude"],
+            radius_m=store_data.get("radius_m", 50),
+            osm_id=store_data.get("osm_id"),
+        )
+        session.add(store)
+        stores_added += 1
+
+    for item_data in backup.get("items", []):
+        item = Item(name=item_data["name"], done=item_data.get("done", False))
+        session.add(item)
+        items_added += 1
+
+    session.commit()
+
+    return {
+        "success": True,
+        "stores_restored": stores_added,
+        "items_restored": items_added,
+    }
+
+
 # Serverer den simple frontend-side. Tilgås via /app/index.html
 app.mount("/app", StaticFiles(directory="frontend", html=True), name="frontend")

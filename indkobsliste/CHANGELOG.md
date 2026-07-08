@@ -44,3 +44,6 @@
 
 ## 2.0.00
    - Ny versions numre
+
+## 2.0.1
+   - Ny "Backup"-fane: download/gendan alle butikker og varer som JSON-fil

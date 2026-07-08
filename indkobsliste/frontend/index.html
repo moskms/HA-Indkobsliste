@@ -298,6 +298,7 @@
       <button class="menu-item active" data-view="list">🛒 Indkøbsliste</button>
       <button class="menu-item" data-view="stores">🏬 Butikker</button>
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
+      <button class="menu-item" data-view="backup">💾 Backup</button>
     </div>
   </div>
 
@@ -336,6 +337,26 @@
       <button id="refresh-diagnostics-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer;">🔄 Opdater</button>
       <div id="diagnostics-list">Henter...</div>
     </div>
+
+    <!-- Visning: Backup -->
+    <div id="view-backup" class="view">
+      <h2>Tag en sikkerhedskopi</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Download alle dine butikker og varer som en fil. Gør dette FØR
+        versionsopgraderinger eller andre ændringer i Home Assistant, så du
+        altid kan gendanne, hvis noget skulle gå tabt.
+      </p>
+      <button id="download-backup-button" style="width:100%; padding:14px; margin-bottom:24px; border:none; border-radius:10px; background:#2f855a; color:white; cursor:pointer; font-size:1.05em;">⬇️ Download backup</button>
+
+      <h2>Gendan fra en backup-fil</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Tilføjer butikker/varer fra en tidligere hentet backup-fil. Sletter
+        ikke eksisterende data - sikkert at bruge selvom listen ikke er tom.
+      </p>
+      <input type="file" id="restore-file-input" accept="application/json" style="width:100%; margin-bottom:12px;">
+      <button id="restore-backup-button" style="width:100%; padding:14px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.05em;">⬆️ Gendan fra fil</button>
+      <div id="backup-feedback" style="margin-top:12px; color:#555;"></div>
+    </div>
   </main>
 
   <script>
@@ -354,6 +375,7 @@
       list: "Indkøbsliste",
       stores: "Butikker",
       diagnostics: "Diagnostik",
+      backup: "Backup",
     };
 
     function openMenu() {
@@ -931,6 +953,57 @@
     }
 
     refreshDiagnosticsButton.addEventListener("click", loadDiagnostics);
+
+    // --- Backup & Gendan ---
+    const downloadBackupButton = document.getElementById("download-backup-button");
+    const restoreFileInput = document.getElementById("restore-file-input");
+    const restoreBackupButton = document.getElementById("restore-backup-button");
+    const backupFeedbackEl = document.getElementById("backup-feedback");
+
+    downloadBackupButton.addEventListener("click", async () => {
+      try {
+        const response = await fetch(`${API_BASE}/backup`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const dateStr = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `indkobsliste-backup-${dateStr}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        backupFeedbackEl.textContent = `Backup downloadet: ${data.stores.length} butik(ker), ${data.items.length} vare(r) ✓`;
+      } catch (err) {
+        backupFeedbackEl.textContent = `Fejl ved download: ${err.message}`;
+      }
+    });
+
+    restoreBackupButton.addEventListener("click", async () => {
+      const file = restoreFileInput.files[0];
+      if (!file) {
+        backupFeedbackEl.textContent = "Vælg en backup-fil først.";
+        return;
+      }
+      try {
+        const text = await file.text();
+        const backupData = JSON.parse(text);
+        const response = await fetch(`${API_BASE}/restore`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(backupData),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const result = await response.json();
+        backupFeedbackEl.textContent = `Gendannet: ${result.stores_restored} butik(ker), ${result.items_restored} vare(r) ✓`;
+      } catch (err) {
+        backupFeedbackEl.textContent = `Fejl ved gendannelse: ${err.message}`;
+      }
+    });
   </script>
 </body>
 </html>
