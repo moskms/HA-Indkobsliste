@@ -39,5 +39,5 @@
 ## 1.0.75
    - Ny: viser HA's egen device_tracker-position i header, til direkte sammenligning med telefonens live GPS
 
-## 1.0.76
+## 1.0.77
    - Rettet: diagnostik-endpoint svarer nu altid 200, så Cloudflare ikke overskriver vores fejlbeskeder med sin egen fejlside
