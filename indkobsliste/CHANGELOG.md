@@ -53,3 +53,8 @@
 
 ## 2.0.3
    - Versions nummer vises nu   
+
+## 2.0.4
+   - Automatiske forslag inkluderer nu adresse, og gemmer navn med gadenavn (undgår forveksling af kæder)
+   - Butikstype gemmes nu i databasen
+   - Ny funktion: tryk på en butiks navn for at omdøbe den   

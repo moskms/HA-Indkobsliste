@@ -756,15 +756,18 @@
           distanceHtml = `<div class="store-distance">📍 ${dist} m fra dig lige nu (±${Math.round(myLivePosition.accuracy)} m)</div>`;
         }
 
+        const typeText = s.shop_type ? ` · ${s.shop_type}` : "";
+
         card.innerHTML = `
-          <div class="store-name">${s.name}</div>
-          <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m</div>
+          <div class="store-name" style="cursor:pointer;" title="Tryk for at omdøbe">${s.name} ✏️</div>
+          <div class="store-coords">${lat}, ${lon} · radius ${s.radius_m} m${typeText}</div>
           ${distanceHtml}
           <div class="store-actions">
             <button class="calibrate-btn ${isActive ? "active" : ""}" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
             <button class="remove-store-btn">Fjern butik</button>
           </div>
         `;
+        card.querySelector(".store-name").addEventListener("click", () => renameStore(s.id, s.name));
         card.querySelector(".calibrate-btn").addEventListener("click", () => {
           if (isActive) {
             stopCalibration(s.id);
@@ -774,6 +777,24 @@
         });
         card.querySelector(".remove-store-btn").addEventListener("click", () => removeStore(s.id, s.name));
         existingStoresListEl.appendChild(card);
+      }
+    }
+
+    async function renameStore(storeId, currentName) {
+      const newName = prompt("Nyt navn for butikken (fx tilføj gadenavn for at skelne fra andre):", currentName);
+      if (!newName || newName.trim() === "" || newName.trim() === currentName) return;
+      try {
+        const response = await fetch(`${API_BASE}/stores/${storeId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newName.trim() }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        loadStores();
+      } catch (err) {
+        alert(`Kunne ikke omdøbe butikken: ${err.message}`);
       }
     }
 
@@ -816,11 +837,11 @@
 
     let currentPosition = null; // gemmes så manuel gemning også kan bruge koordinaterne
 
-    async function saveStore(name, lat, lon) {
+    async function saveStore(name, lat, lon, shopType, osmId) {
       const response = await fetch(`${API_BASE}/stores`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, latitude: lat, longitude: lon }),
+        body: JSON.stringify({ name, latitude: lat, longitude: lon, shop_type: shopType || null, osm_id: osmId || null }),
       });
       if (!response.ok) {
         throw new Error(`Server svarede med status ${response.status}`);
@@ -838,16 +859,20 @@
           const btn = document.createElement("button");
           btn.className = "suggestion-btn";
           const distanceText = s.distance_m !== undefined ? ` · ${s.distance_m} m væk` : "";
-          btn.innerHTML = `${s.name}<small>${s.shop_type || "butik"}${distanceText}</small>`;
+          const addressText = s.address ? ` · ${s.address}` : "";
+          btn.innerHTML = `${s.name}<small>${s.shop_type || "butik"}${addressText}${distanceText}</small>`;
           btn.addEventListener("click", async () => {
+            // Inkluder gadenavn i det gemte navn, når vi har det, så flere
+            // butikker af samme kæde (fx flere "Netto") kan skelnes fra hinanden.
+            const saveName = s.address ? `${s.name} (${s.address})` : s.name;
             try {
-              await saveStore(s.name, s.latitude, s.longitude);
-              storeFeedbackEl.textContent = `Gemt: "${s.name}" ✓`;
+              await saveStore(saveName, s.latitude, s.longitude, s.shop_type, s.osm_id);
+              storeFeedbackEl.textContent = `Gemt: "${saveName}" ✓`;
               suggestionsEl.innerHTML = "";
               manualRowEl.style.display = "none";
               loadStores();
             } catch (err) {
-              storeFeedbackEl.textContent = `Kunne ikke gemme "${s.name}": ${err.message}`;
+              storeFeedbackEl.textContent = `Kunne ikke gemme "${saveName}": ${err.message}`;
             }
           });
           suggestionsEl.appendChild(btn);

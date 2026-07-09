@@ -52,9 +52,11 @@ def build_query(lat: float, lon: float, radius_m: int = 100) -> str:
 
 def parse_response(data: dict) -> list[dict]:
     """Omsætter Overpass' rå svar til en liste af forslag:
-    [{"name": ..., "shop_type": ..., "latitude": ..., "longitude": ..., "osm_id": ...}, ...]
+    [{"name": ..., "shop_type": ..., "address": ..., "latitude": ..., "longitude": ..., "osm_id": ...}, ...]
 
     Springer elementer uden navn over, da de er ubrugelige som forslag i UI'en.
+    'address' (gadenavn + evt. husnummer) inkluderes når tilgængeligt, så man
+    kan skelne mellem flere butikker med samme kædenavn (fx flere "Netto").
     """
     suggestions = []
     for element in data.get("elements", []):
@@ -75,9 +77,16 @@ def parse_response(data: dict) -> list[dict]:
         if lat is None or lon is None:
             continue
 
+        street = tags.get("addr:street")
+        housenumber = tags.get("addr:housenumber")
+        address = None
+        if street:
+            address = f"{street} {housenumber}".strip() if housenumber else street
+
         suggestions.append({
             "name": name,
             "shop_type": tags.get("shop"),
+            "address": address,
             "latitude": lat,
             "longitude": lon,
             "osm_id": f"{element['type']}/{element['id']}",

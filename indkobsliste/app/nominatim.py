@@ -59,7 +59,9 @@ def build_viewbox(lat: float, lon: float, radius_m: int) -> str:
 
 
 def parse_nominatim_results(raw_results: list[dict]) -> list[dict]:
-    """Omsætter Nominatims rå svar til vores fælles forslagsformat."""
+    """Omsætter Nominatims rå svar til vores fælles forslagsformat.
+    'address' udtrækkes som andet led i display_name (typisk gadenavn),
+    til at skelne mellem flere butikker med samme kædenavn."""
     suggestions = []
     for r in raw_results:
         try:
@@ -67,9 +69,13 @@ def parse_nominatim_results(raw_results: list[dict]) -> list[dict]:
             lon = float(r["lon"])
         except (KeyError, ValueError, TypeError):
             continue
+        parts = r.get("display_name", "").split(",")
+        name = parts[0].strip()
+        address = parts[1].strip() if len(parts) > 1 else None
         suggestions.append({
-            "name": r.get("display_name", "").split(",")[0].strip(),
+            "name": name,
             "shop_type": r.get("type"),
+            "address": address,
             "latitude": lat,
             "longitude": lon,
             "osm_id": f"{r.get('osm_type')}/{r.get('osm_id')}",

@@ -28,6 +28,7 @@ class Store(SQLModel, table=True):
     longitude: float
     radius_m: int = Field(default=50)  # geofence-radius i meter
     osm_id: Optional[str] = Field(default=None)  # hvis fundet via Overpass
+    shop_type: Optional[str] = Field(default=None)  # fx 'supermarket', 'bakery' - fra OSM
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -42,14 +43,18 @@ class StoreCreate(BaseModel):
     latitude: float
     longitude: float
     radius_m: int = 50
+    shop_type: Optional[str] = None
+    osm_id: Optional[str] = None
 
 
 class StoreUpdate(BaseModel):
-    """Input-schema til PATCH /stores/{id} - bruges til at kalibrere koordinater/radius,
-    fx efter at have indsamlet GPS-punkter mens man gik rundt i butikken."""
-    latitude: float
-    longitude: float
-    radius_m: int
+    """Input-schema til PATCH /stores/{id} - bruges enten til GPS-kalibrering
+    (koordinater/radius), eller til at omdøbe en butik, så flere butikker med
+    samme kædenavn (fx 'Netto') kan skelnes fra hinanden."""
+    name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    radius_m: Optional[int] = None
 
 
 class ProximityState(SQLModel, table=True):

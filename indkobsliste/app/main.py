@@ -90,6 +90,8 @@ def add_store(store_in: StoreCreate, session: Session = Depends(get_session)):
         latitude=store_in.latitude,
         longitude=store_in.longitude,
         radius_m=store_in.radius_m,
+        shop_type=store_in.shop_type,
+        osm_id=store_in.osm_id,
     )
     session.add(store)
     session.commit()
@@ -105,13 +107,20 @@ def list_stores(session: Session = Depends(get_session)):
 
 @app.patch("/stores/{store_id}", response_model=Store)
 def update_store(store_id: int, update: StoreUpdate, session: Session = Depends(get_session)):
-    """Opdaterer en butiks koordinater og radius, fx efter GPS-kalibrering."""
+    """Opdaterer en butik - koordinater/radius (GPS-kalibrering), og/eller navn
+    (omdøbning, fx til at skelne mellem flere butikker med samme kædenavn).
+    Kun de felter der rent faktisk sendes med, bliver ændret."""
     store = session.get(Store, store_id)
     if store is None:
         raise HTTPException(status_code=404, detail="Butik ikke fundet")
-    store.latitude = update.latitude
-    store.longitude = update.longitude
-    store.radius_m = update.radius_m
+    if update.name is not None:
+        store.name = update.name.strip()
+    if update.latitude is not None:
+        store.latitude = update.latitude
+    if update.longitude is not None:
+        store.longitude = update.longitude
+    if update.radius_m is not None:
+        store.radius_m = update.radius_m
     session.add(store)
     session.commit()
     session.refresh(store)
