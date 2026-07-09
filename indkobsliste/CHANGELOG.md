@@ -57,4 +57,9 @@
 ## 2.0.4
    - Automatiske forslag inkluderer nu adresse, og gemmer navn med gadenavn (undgår forveksling af kæder)
    - Butikstype gemmes nu i databasen
-   - Ny funktion: tryk på en butiks navn for at omdøbe den   
+   - Ny funktion: tryk på en butiks navn for at omdøbe den
+
+## 2.0.5
+   - Rettet kritisk fejl: manglende 'shop_type'-kolonne på eksisterende database
+   - Ny automatisk database-migration: fremtidige nye felter tilføjes nu automatisk uden datatab
+
