@@ -50,3 +50,6 @@
 
 ## 2.0.2
    - Opsætning af besked når der er noget på listen
+
+## 2.0.3
+   - Versions nummer vises nu   

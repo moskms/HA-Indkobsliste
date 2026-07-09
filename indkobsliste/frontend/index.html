@@ -73,6 +73,15 @@
       height: 100%;
       box-shadow: 2px 0 8px rgba(0,0,0,0.2);
       padding: 16px 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #menu-version {
+      margin-top: auto;
+      padding: 14px 20px;
+      color: #aaa;
+      font-size: 0.85em;
+      border-top: 1px solid #eee;
     }
     .menu-item {
       display: block;
@@ -300,6 +309,7 @@
       <button class="menu-item" data-view="stores">🏬 Butikker</button>
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
+      <div id="menu-version">v2.0.3</div>
     </div>
   </div>
 
