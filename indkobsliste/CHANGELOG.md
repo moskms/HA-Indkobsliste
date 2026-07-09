@@ -47,3 +47,6 @@
 
 ## 2.0.1
    - Ny "Backup"-fane: download/gendan alle butikker og varer som JSON-fil
+
+## 2.0.2
+   - Opsætning af besked når der er noget på listen

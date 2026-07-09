@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-04
+# Sidst opdateret: 2026-07-09
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
@@ -309,10 +309,15 @@ def check_proximity(
         names = ", ".join(item.name for item in items)
         message = f"Du er ved {nearest.name}. Husk: {names}."
 
-    _log_proximity_check(session, lat, lon, nearest.name, round(distance), is_new_arrival)
+    # Kun rent faktisk notifikationsværdigt hvis det er en ny ankomst OG der
+    # står noget på listen - ingen grund til at forstyrre med en besked om
+    # at listen er tom.
+    should_notify = is_new_arrival and len(items) > 0
+
+    _log_proximity_check(session, lat, lon, nearest.name, round(distance), should_notify)
 
     return {
-        "should_notify": is_new_arrival,
+        "should_notify": should_notify,
         "store_name": nearest.name,
         "distance_m": round(distance),
         "item_count": len(items),

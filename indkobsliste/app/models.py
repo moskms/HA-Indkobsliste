@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-04
+Sidst opdateret: 2026-07-09
 
 Databasemodeller for indkøbsliste-appen.
 
@@ -10,7 +10,7 @@ To tabeller i denne omgang:
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel 
+from pydantic import BaseModel
 from sqlmodel import SQLModel, Field
 
 
