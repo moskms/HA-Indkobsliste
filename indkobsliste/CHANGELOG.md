@@ -63,3 +63,4 @@
    - Rettet kritisk fejl: manglende 'shop_type'-kolonne på eksisterende database
    - Ny automatisk database-migration: fremtidige nye felter tilføjes nu automatisk uden datatab
 
+ 
