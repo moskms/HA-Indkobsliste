@@ -1,5 +1,5 @@
-# Sidst opdateret: 2026-07-09
-from contextlib import asynccontextmanager 
+# Sidst opdateret: 2026-07-09 | Version: 2.0.5
+from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
 import logging

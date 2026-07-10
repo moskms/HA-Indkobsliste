@@ -1,4 +1,6 @@
 """
+Sidst opdateret: 2026-07-09 | Version: 2.0.5
+
 Nominatim-fallback til butiksopslag, brugt når Overpass fejler/er utilgængelig.
 
 Nominatim er en anden gratis OSM-baseret webtjeneste (adressesøgning),

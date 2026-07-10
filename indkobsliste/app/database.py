@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-09
+Sidst opdateret: 2026-07-09 | Version: 2.0.5
 
 Database-opsætning. Bruger SQLite-fil, som gemmes lokalt.
 Senere (HA add-on) peger denne sti ind i add-on'ets persistente /data mappe.

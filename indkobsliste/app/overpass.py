@@ -1,4 +1,6 @@
 """
+Sidst opdateret: 2026-07-09 | Version: 2.0.5
+
 Overpass-opslag: finder butikker (dagligvarer m.m.) tæt på en given
 GPS-koordinat, til brug for "ny butik her"-knappen i frontend.
 

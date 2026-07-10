@@ -63,4 +63,7 @@
    - Rettet kritisk fejl: manglende 'shop_type'-kolonne på eksisterende database
    - Ny automatisk database-migration: fremtidige nye felter tilføjes nu automatisk uden datatab
 
+## 2.0.6
+   - Ret forkert versionsnummer i menu, tilføj version til alle filhoveder
+   
  
