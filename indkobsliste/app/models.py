@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-09 | Version: 2.0.5
+Sidst opdateret: 2026-07-11 | Version: 2.0.7
 
 Databasemodeller for indkøbsliste-appen.
 
@@ -83,3 +83,26 @@ class ProximityCheckLog(SQLModel, table=True):
     nearest_store_name: Optional[str] = Field(default=None)
     distance_m: Optional[int] = Field(default=None)
     should_notify: bool = Field(default=False)
+
+
+class NotificationLog(SQLModel, table=True):
+    """
+    Logger hver gang en proximity-notifikation RENT FAKTISK udløses
+    (should_notify=True i /webhook/check-proximity). Modsat ProximityCheckLog
+    (som logger ALLE kald, inkl. "ikke i nærheden"), indeholder denne kun de
+    events hvor en besked reelt blev sendt til telefonen - så historikken
+    dækker langt længere tid tilbage (ingen 30-rækkers begrænsning i praksis),
+    og gør det muligt bagudrettet at se præcis hvilken position telefonen
+    havde, og hvilken butik/afstand der udløste en given besked.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    notified_at: datetime = Field(default_factory=datetime.utcnow)
+    lat: float
+    lon: float
+    store_id: int
+    store_name: str
+    store_latitude: float
+    store_longitude: float
+    distance_m: int
+    threshold_m: int
+    message: str

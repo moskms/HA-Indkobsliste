@@ -66,4 +66,8 @@
 ## 2.0.6
    - Ret forkert versionsnummer i menu, tilføj version til alle filhoveder
    
+## 2.0.7
+   - Oprettelse af logfil til diag
+
+
  

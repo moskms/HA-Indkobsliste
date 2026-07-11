@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-09 | Version: 2.0.5
+# Sidst opdateret: 2026-07-11 | Version: 2.0.7
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
@@ -12,7 +12,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
 from app.database import init_db, get_session
-from app.models import Item, ItemCreate, Store, StoreCreate, StoreUpdate, ProximityState, ProximityCheckLog
+from app.models import (
+    Item,
+    ItemCreate,
+    Store,
+    StoreCreate,
+    StoreUpdate,
+    ProximityState,
+    ProximityCheckLog,
+    NotificationLog,
+)
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
 
@@ -245,6 +254,40 @@ def _log_proximity_check(
         session.commit()
 
 
+def _log_notification(
+    session: Session,
+    lat: float,
+    lon: float,
+    store: Store,
+    distance_m: int,
+    threshold_m: int,
+    message: str,
+) -> None:
+    """Logger en RENT FAKTISK udløst notifikation (should_notify=True), til
+    senere fejlsøgning af falske positiver. Beholder kun de seneste 500 rækker."""
+    log_entry = NotificationLog(
+        lat=lat,
+        lon=lon,
+        store_id=store.id,
+        store_name=store.name,
+        store_latitude=store.latitude,
+        store_longitude=store.longitude,
+        distance_m=distance_m,
+        threshold_m=threshold_m,
+        message=message,
+    )
+    session.add(log_entry)
+    session.commit()
+
+    all_logs = session.exec(
+        select(NotificationLog).order_by(NotificationLog.notified_at.desc())
+    ).all()
+    for old_entry in all_logs[500:]:
+        session.delete(old_entry)
+    if len(all_logs) > 500:
+        session.commit()
+
+
 def _get_proximity_state(session: Session) -> ProximityState:
     """Henter (eller opretter) den ene, faste tilstandsrække."""
     state = session.get(ProximityState, 1)
@@ -322,6 +365,11 @@ def check_proximity(
     # står noget på listen - ingen grund til at forstyrre med en besked om
     # at listen er tom.
     should_notify = is_new_arrival and len(items) > 0
+
+    if should_notify:
+        _log_notification(
+            session, lat, lon, nearest, round(distance), threshold_m, message
+        )
 
     _log_proximity_check(session, lat, lon, nearest.name, round(distance), should_notify)
 
@@ -434,6 +482,40 @@ def proximity_log(limit: int = 30, session: Session = Depends(get_session)):
                 "nearest_store_name": log.nearest_store_name,
                 "distance_m": log.distance_m,
                 "should_notify": log.should_notify,
+            }
+            for log in logs
+        ],
+    }
+
+
+@app.get("/diagnostics/notification-log")
+def notification_log(limit: int = 50, session: Session = Depends(get_session)):
+    """
+    Viser de seneste RENT FAKTISK udløste notifikationer (should_notify=True),
+    med telefonens position og den butik der udløste beskeden. Modsat
+    /diagnostics/proximity-log (som roterer efter 200/30 rækker og drukner i
+    "ikke i nærheden"-tjek), dækker denne langt længere tid tilbage - god til
+    at undersøge falske positiver bagudrettet.
+    """
+    logs = session.exec(
+        select(NotificationLog)
+        .order_by(NotificationLog.notified_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "count": len(logs),
+        "entries": [
+            {
+                "notified_at": log.notified_at.isoformat(),
+                "phone_lat": log.lat,
+                "phone_lon": log.lon,
+                "store_id": log.store_id,
+                "store_name": log.store_name,
+                "store_latitude": log.store_latitude,
+                "store_longitude": log.store_longitude,
+                "distance_m": log.distance_m,
+                "threshold_m": log.threshold_m,
+                "message": log.message,
             }
             for log in logs
         ],
