@@ -69,5 +69,9 @@
 ## 2.0.7
    - Oprettelse af logfil til diag
 
+## 2.0.8
+   - Logfil kan ses fra menuen
+
+
 
  
