@@ -72,6 +72,8 @@
 ## 2.0.8
    - Logfil kan ses fra menuen
 
+## 2.0.9
+   - Knap til mistede/maglende besker i Menuen
 
 
  

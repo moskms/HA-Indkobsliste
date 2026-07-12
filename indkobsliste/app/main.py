@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-11 | Version: 2.0.7
+# Sidst opdateret: 2026-07-12 | Version: 2.0.9
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
@@ -21,6 +21,8 @@ from app.models import (
     ProximityState,
     ProximityCheckLog,
     NotificationLog,
+    MissedNotificationReport,
+    MissedNotificationReportCreate,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
@@ -233,7 +235,14 @@ def _log_proximity_check(
     distance_m: Optional[int],
     should_notify: bool,
 ) -> None:
-    """Logger et proximity-tjek til diagnostik, og beholder kun de seneste 200 rækker."""
+    """Logger et proximity-tjek til diagnostik.
+
+    MIDLERTIDIGT under testfasen (fra v2.0.9): INGEN oprydning/rotation her -
+    vi beholder alle rækker, så vi kan undersøge episoder langt tilbage i
+    tiden (fx "jeg fik ikke en besked i morges"). Selv et helt års logning
+    ved 1 kald/minut fylder under 100 MB i SQLite, så det er uproblematisk
+    at lade stå på under testen. Genindfør en grænse (fx tidsbaseret,
+    "behold 90 dage") når vi er tilfredse med stabiliteten."""
     log_entry = ProximityCheckLog(
         lat=lat,
         lon=lon,
@@ -243,15 +252,6 @@ def _log_proximity_check(
     )
     session.add(log_entry)
     session.commit()
-
-    # Ryd op: behold kun de seneste 200 rækker, så tabellen ikke vokser uendeligt
-    all_logs = session.exec(
-        select(ProximityCheckLog).order_by(ProximityCheckLog.checked_at.desc())
-    ).all()
-    for old_entry in all_logs[200:]:
-        session.delete(old_entry)
-    if len(all_logs) > 200:
-        session.commit()
 
 
 def _log_notification(
@@ -286,6 +286,18 @@ def _log_notification(
         session.delete(old_entry)
     if len(all_logs) > 500:
         session.commit()
+
+
+def _find_nearest_store(session: Session, lat: float, lon: float):
+    """Finder nærmeste butik og afstanden til den, eller (None, None) hvis
+    ingen butikker er oprettet endnu. Samme logik som bruges i check_proximity,
+    udtrukket her så rapporterings-endpointet kan genbruge den."""
+    stores = session.exec(select(Store)).all()
+    if not stores:
+        return None, None
+    nearest = min(stores, key=lambda s: haversine_m(lat, lon, s.latitude, s.longitude))
+    distance = haversine_m(lat, lon, nearest.latitude, nearest.longitude)
+    return nearest, distance
 
 
 def _get_proximity_state(session: Session) -> ProximityState:
@@ -516,6 +528,69 @@ def notification_log(limit: int = 50, session: Session = Depends(get_session)):
                 "distance_m": log.distance_m,
                 "threshold_m": log.threshold_m,
                 "message": log.message,
+            }
+            for log in logs
+        ],
+    }
+
+
+@app.post("/diagnostics/report-missing-notification")
+def report_missing_notification(
+    report_in: MissedNotificationReportCreate, session: Session = Depends(get_session)
+):
+    """
+    Kaldes fra appen, når du selv opdager at en forventet besked IKKE kom -
+    fx mens du står i en butik med varer på listen. Beregner nærmeste butik
+    og afstand på RAPPORTERINGSTIDSPUNKTET (samme logik som check-proximity),
+    og gemmer det til senere sammenligning med hvad HA's periodiske kald
+    reelt så på samme tidspunkt (via /diagnostics/proximity-log).
+    """
+    nearest, distance = _find_nearest_store(session, report_in.lat, report_in.lon)
+
+    item_count = len(
+        session.exec(select(Item).where(Item.done == False)).all()  # noqa: E712
+    )
+
+    report = MissedNotificationReport(
+        lat=report_in.lat,
+        lon=report_in.lon,
+        nearest_store_name=nearest.name if nearest else None,
+        distance_m=round(distance) if distance is not None else None,
+        item_count=item_count,
+        note=report_in.note,
+    )
+    session.add(report)
+    session.commit()
+    session.refresh(report)
+
+    return {
+        "success": True,
+        "reported_at": report.reported_at.isoformat(),
+        "nearest_store_name": report.nearest_store_name,
+        "distance_m": report.distance_m,
+        "item_count": report.item_count,
+    }
+
+
+@app.get("/diagnostics/missing-notification-log")
+def missing_notification_log(limit: int = 50, session: Session = Depends(get_session)):
+    """Viser tidligere rapporterede 'jeg fik ikke en besked'-hændelser."""
+    logs = session.exec(
+        select(MissedNotificationReport)
+        .order_by(MissedNotificationReport.reported_at.desc())
+        .limit(limit)
+    ).all()
+    return {
+        "count": len(logs),
+        "entries": [
+            {
+                "reported_at": log.reported_at.isoformat(),
+                "lat": log.lat,
+                "lon": log.lon,
+                "nearest_store_name": log.nearest_store_name,
+                "distance_m": log.distance_m,
+                "item_count": log.item_count,
+                "note": log.note,
             }
             for log in logs
         ],

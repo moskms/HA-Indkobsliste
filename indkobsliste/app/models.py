@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-11 | Version: 2.0.7
+Sidst opdateret: 2026-07-12 | Version: 2.0.9
 
 Databasemodeller for indkøbsliste-appen.
 
@@ -106,3 +106,29 @@ class NotificationLog(SQLModel, table=True):
     distance_m: int
     threshold_m: int
     message: str
+
+
+class MissedNotificationReport(SQLModel, table=True):
+    """
+    Brugerens EGEN rapport om at en forventet notifikation IKKE blev modtaget
+    - oprettes manuelt via en knap i appen, mens man står ved/på vej til en
+    butik og ved at der er varer på listen. Gemmer telefonens position samt
+    den nærmeste butik/afstand PÅ RAPPORTERINGSTIDSPUNKTET, beregnet med
+    samme logik som /webhook/check-proximity - så rapporten bagefter kan
+    sammenholdes med hvad HA's periodiske kald reelt så på samme tidspunkt.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    reported_at: datetime = Field(default_factory=datetime.utcnow)
+    lat: float
+    lon: float
+    nearest_store_name: Optional[str] = Field(default=None)
+    distance_m: Optional[int] = Field(default=None)
+    item_count: int = Field(default=0)
+    note: Optional[str] = Field(default=None)
+
+
+class MissedNotificationReportCreate(BaseModel):
+    """Input-schema til POST /diagnostics/report-missing-notification."""
+    lat: float
+    lon: float
+    note: Optional[str] = None
