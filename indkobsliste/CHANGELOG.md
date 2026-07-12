@@ -75,5 +75,9 @@
 ## 2.0.9
    - Knap til mistede/maglende besker i Menuen
 
+## 2.0.10
+   - Flyttede Til ny butik til toppen af listen
+
+   
 
  

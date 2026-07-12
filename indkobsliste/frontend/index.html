@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-07-12 | Version: 2.0.9 -->
+<!-- Sidst opdateret: 2026-07-12 | Version: 2.0.10 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -310,7 +310,7 @@
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.9</div>
+      <div id="menu-version">v2.0.10</div>
     </div>
   </div>
 
@@ -326,9 +326,6 @@
 
     <!-- Visning: Butikker -->
     <div id="view-stores" class="view">
-      <h2>Dine butikker</h2>
-      <div id="existing-stores-list">Henter...</div>
-
       <h2>Tilføj ny butik</h2>
       <button id="new-store-button">📍 Ny butik her</button>
       <div id="store-feedback"></div>
@@ -337,6 +334,9 @@
         <input type="text" id="manual-store-name" placeholder="Skriv butiksnavn selv...">
         <button id="manual-store-save">Gem</button>
       </div>
+
+      <h2>Dine butikker</h2>
+      <div id="existing-stores-list">Henter...</div>
     </div>
 
     <!-- Visning: Diagnostik -->
