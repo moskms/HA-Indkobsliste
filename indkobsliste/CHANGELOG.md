@@ -79,5 +79,5 @@
    - Flyttede Til ny butik til toppen af listen
 
    
-
- 
+## 2.0.11
+   - Ny "Nulstil sidst notificeret"-knap i Diagnostik, til at rette op på fastlåst tilstand efter fejlede beskeder

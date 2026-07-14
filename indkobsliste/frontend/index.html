@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-07-12 | Version: 2.0.10 -->
+<!-- Sidst opdateret: 2026-07-10 | Version: 2.0.7 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -308,9 +308,8 @@
       <button class="menu-item active" data-view="list">🛒 Indkøbsliste</button>
       <button class="menu-item" data-view="stores">🏬 Butikker</button>
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
-      <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.10</div>
+      <div id="menu-version">v2.0.7</div>
     </div>
   </div>
 
@@ -326,6 +325,9 @@
 
     <!-- Visning: Butikker -->
     <div id="view-stores" class="view">
+      <h2>Dine butikker</h2>
+      <div id="existing-stores-list">Henter...</div>
+
       <h2>Tilføj ny butik</h2>
       <button id="new-store-button">📍 Ny butik her</button>
       <div id="store-feedback"></div>
@@ -334,9 +336,6 @@
         <input type="text" id="manual-store-name" placeholder="Skriv butiksnavn selv...">
         <button id="manual-store-save">Gem</button>
       </div>
-
-      <h2>Dine butikker</h2>
-      <div id="existing-stores-list">Henter...</div>
     </div>
 
     <!-- Visning: Diagnostik -->
@@ -347,34 +346,12 @@
         rent faktisk kalder endpointet, og hvilke koordinater den sender.
       </p>
       <button id="refresh-diagnostics-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer;">🔄 Opdater</button>
+      <button id="reset-proximity-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#c53030; color:white; cursor:pointer;">♻️ Nulstil "sidst notificeret"</button>
+      <p style="color:#666; font-size:0.85em; margin-top:-4px;">
+        Brug denne hvis du ikke får besked, selvom du er tæt på en butik -
+        systemet husker måske fejlagtigt at have advaret dig allerede.
+      </p>
       <div id="diagnostics-list">Henter...</div>
-    </div>
-
-    <!-- Visning: Notifikationer -->
-    <div id="view-notifications" class="view">
-      <h2>Rapportér manglende besked</h2>
-      <p style="color:#666; font-size:0.9em;">
-        Stod du lige ved/på vej til en butik med varer på listen, uden at få
-        en besked? Tryk her med det samme - det gemmer din nuværende
-        position, så vi bagefter kan sammenligne med hvad Home Assistants
-        periodiske tjek så på nøjagtig samme tidspunkt.
-      </p>
-      <button id="report-missing-button" style="width:100%; padding:14px; margin-bottom:8px; border:none; border-radius:10px; background:#c53030; color:white; cursor:pointer; font-size:1.05em;">🚨 Jeg fik ikke en besked</button>
-      <div id="report-missing-feedback" style="margin-bottom:20px; color:#555;"></div>
-
-      <h2>Tidligere rapporter</h2>
-      <div id="missing-log-list" style="margin-bottom:24px;">Henter...</div>
-
-      <h2>Sendte notifikationer</h2>
-      <p style="color:#666; font-size:0.9em;">
-        Viser de notifikationer, der rent faktisk er blevet sendt til telefonen
-        - med både telefonens og butikkens position på tidspunktet. Modsat
-        Diagnostik-fanen (som roterer efter 30 rækker og drukner i "ikke i
-        nærheden"-tjek), dækker denne langt længere tid tilbage - god til at
-        undersøge falske positiver bagudrettet.
-      </p>
-      <button id="refresh-notifications-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer;">🔄 Opdater</button>
-      <div id="notifications-list">Henter...</div>
     </div>
 
     <!-- Visning: Backup -->
@@ -414,7 +391,6 @@
       list: "Indkøbsliste",
       stores: "Butikker",
       diagnostics: "Diagnostik",
-      notifications: "Notifikationer",
       backup: "Backup",
     };
 
@@ -476,10 +452,6 @@
       }
       if (viewName === "diagnostics") {
         loadDiagnostics();
-      }
-      if (viewName === "notifications") {
-        loadNotifications();
-        loadMissingLog();
       }
     }
 
@@ -1023,130 +995,17 @@
 
     refreshDiagnosticsButton.addEventListener("click", loadDiagnostics);
 
-    // --- Notifikationer (sendte beskeder) ---
-    const notificationsListEl = document.getElementById("notifications-list");
-    const refreshNotificationsButton = document.getElementById("refresh-notifications-button");
-
-    async function loadNotifications() {
-      notificationsListEl.textContent = "Henter...";
+    const resetProximityButton = document.getElementById("reset-proximity-button");
+    resetProximityButton.addEventListener("click", async () => {
+      if (!confirm("Nulstil hukommelsen om sidst notificerede butik?")) return;
       try {
-        const response = await fetch(`${API_BASE}/diagnostics/notification-log?limit=50`);
-        if (!response.ok) {
-          throw new Error(`Server svarede med status ${response.status}`);
-        }
+        const response = await fetch(`${API_BASE}/diagnostics/reset-proximity-state`, { method: "POST" });
         const data = await response.json();
-
-        if (data.entries.length === 0) {
-          notificationsListEl.textContent = "Ingen notifikationer sendt endnu.";
-          return;
-        }
-
-        notificationsListEl.innerHTML = "";
-        for (const entry of data.entries) {
-          const row = document.createElement("div");
-          row.className = "store-card";
-          const time = new Date(entry.notified_at).toLocaleString("da-DK");
-          const phoneMapUrl = `https://www.google.com/maps?q=${entry.phone_lat},${entry.phone_lon}`;
-          const storeMapUrl = `https://www.google.com/maps?q=${entry.store_latitude},${entry.store_longitude}`;
-          row.innerHTML = `
-            <div class="store-name">${time} · ${entry.store_name}</div>
-            <div class="store-coords">
-              Telefon: ${entry.phone_lat.toFixed(6)}, ${entry.phone_lon.toFixed(6)}
-              (<a href="${phoneMapUrl}" target="_blank" rel="noopener">kort</a>)<br>
-              Butik: ${entry.store_latitude.toFixed(6)}, ${entry.store_longitude.toFixed(6)}
-              (<a href="${storeMapUrl}" target="_blank" rel="noopener">kort</a>)<br>
-              Afstand: ${entry.distance_m} m (grænse: ${entry.threshold_m} m)
-            </div>
-            <div class="store-distance">${entry.message}</div>
-          `;
-          notificationsListEl.appendChild(row);
-        }
+        alert(data.message || "Nulstillet.");
       } catch (err) {
-        notificationsListEl.textContent = `Fejl: kunne ikke hente notifikationer (${err.message})`;
+        alert(`Fejl: ${err.message}`);
       }
-    }
-
-    refreshNotificationsButton.addEventListener("click", loadNotifications);
-
-    // --- Rapportér manglende besked ---
-    const reportMissingButton = document.getElementById("report-missing-button");
-    const reportMissingFeedbackEl = document.getElementById("report-missing-feedback");
-    const missingLogListEl = document.getElementById("missing-log-list");
-
-    reportMissingButton.addEventListener("click", () => {
-      if (!navigator.geolocation) {
-        reportMissingFeedbackEl.textContent = "Denne browser understøtter ikke GPS-placering.";
-        return;
-      }
-      reportMissingButton.disabled = true;
-      reportMissingFeedbackEl.textContent = "Henter din placering...";
-
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
-          try {
-            const response = await fetch(`${API_BASE}/diagnostics/report-missing-notification`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ lat, lon }),
-            });
-            if (!response.ok) {
-              throw new Error(`Server svarede med status ${response.status}`);
-            }
-            const data = await response.json();
-            const time = new Date(data.reported_at).toLocaleTimeString("da-DK");
-            reportMissingFeedbackEl.textContent =
-              `Registreret kl. ${time}: ${data.distance_m ?? "?"} m fra ` +
-              `${data.nearest_store_name || "ingen kendt butik"}, ` +
-              `${data.item_count} vare(r) på listen ✓`;
-            loadMissingLog();
-          } catch (err) {
-            reportMissingFeedbackEl.textContent = `Kunne ikke registrere rapport: ${err.message}`;
-          } finally {
-            reportMissingButton.disabled = false;
-          }
-        },
-        (geoErr) => {
-          reportMissingFeedbackEl.textContent = `Kunne ikke hente din placering: ${geoErr.message}`;
-          reportMissingButton.disabled = false;
-        },
-        { enableHighAccuracy: true, timeout: 15000 }
-      );
     });
-
-    async function loadMissingLog() {
-      missingLogListEl.textContent = "Henter...";
-      try {
-        const response = await fetch(`${API_BASE}/diagnostics/missing-notification-log?limit=50`);
-        if (!response.ok) {
-          throw new Error(`Server svarede med status ${response.status}`);
-        }
-        const data = await response.json();
-
-        if (data.entries.length === 0) {
-          missingLogListEl.textContent = "Ingen rapporter endnu.";
-          return;
-        }
-
-        missingLogListEl.innerHTML = "";
-        for (const entry of data.entries) {
-          const row = document.createElement("div");
-          row.className = "store-card";
-          const time = new Date(entry.reported_at).toLocaleString("da-DK");
-          row.innerHTML = `
-            <div class="store-name">${time}</div>
-            <div class="store-coords">
-              Nærmeste: ${entry.nearest_store_name || "ingen"} · ${entry.distance_m ?? "?"} m ·
-              ${entry.item_count} vare(r) på listen
-            </div>
-          `;
-          missingLogListEl.appendChild(row);
-        }
-      } catch (err) {
-        missingLogListEl.textContent = `Fejl: kunne ikke hente rapporter (${err.message})`;
-      }
-    }
 
     // --- Backup & Gendan ---
     const downloadBackupButton = document.getElementById("download-backup-button");
