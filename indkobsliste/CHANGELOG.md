@@ -84,3 +84,6 @@
 
 ## 2.0.12
    - Opdatering af hele systemet pga. forkert version nummer
+
+## 2.0.13
+   - Oprettelse af emulerings knap for notifikationer
