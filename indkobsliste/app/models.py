@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-12 | Version: 2.0.10
+Sidst opdateret: 2026-07-18 | Version: 2.0.13
 
 Databasemodeller for indkøbsliste-appen.
 
@@ -106,6 +106,7 @@ class NotificationLog(SQLModel, table=True):
     distance_m: int
     threshold_m: int
     message: str
+    emulated: bool = Field(default=False)
 
 
 class MissedNotificationReport(SQLModel, table=True):
@@ -132,3 +133,17 @@ class MissedNotificationReportCreate(BaseModel):
     lat: float
     lon: float
     note: Optional[str] = None
+
+
+class EmulationSettings(SQLModel, table=True):
+    """
+    Enkelt-række-tabel der styrer TEST-TILSTANDEN i Diagnostik-fanen.
+    Når enabled=True, tvinger /webhook/check-proximity should_notify=True
+    for nærmeste butik (med den RIGTIGE besked fra den rigtige liste),
+    uanset faktisk afstand - så man kan bekræfte at telefonen modtager
+    notifikationer, og hvornår, uden selv at skulle stå i en butik.
+    HUSK at slå den fra igen efter test, ellers sender den ved hvert kald.
+    """
+    id: Optional[int] = Field(default=1, primary_key=True)
+    enabled: bool = Field(default=False)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

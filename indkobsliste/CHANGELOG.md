@@ -87,3 +87,8 @@
 
 ## 2.0.13
    - Oprettelse af emulerings knap for notifikationer
+
+## 2.0.14
+   - - - - - - 
+
+   

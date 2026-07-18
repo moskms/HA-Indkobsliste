@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-12 | Version: 2.0.10
+# Sidst opdateret: 2026-07-18 | Version: 2.0.13
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
@@ -23,6 +23,7 @@ from app.models import (
     NotificationLog,
     MissedNotificationReport,
     MissedNotificationReportCreate,
+    EmulationSettings,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
@@ -262,9 +263,10 @@ def _log_notification(
     distance_m: int,
     threshold_m: int,
     message: str,
+    emulated: bool = False,
 ) -> None:
     """Logger en RENT FAKTISK udløst notifikation (should_notify=True), til
-    senere fejlsøgning af falske positiver. Beholder kun de seneste 500 rækker."""
+    senere fejlsøgning af falske positiver."""
     log_entry = NotificationLog(
         lat=lat,
         lon=lon,
@@ -275,17 +277,10 @@ def _log_notification(
         distance_m=distance_m,
         threshold_m=threshold_m,
         message=message,
+        emulated=emulated,
     )
     session.add(log_entry)
     session.commit()
-
-    all_logs = session.exec(
-        select(NotificationLog).order_by(NotificationLog.notified_at.desc())
-    ).all()
-    for old_entry in all_logs[500:]:
-        session.delete(old_entry)
-    if len(all_logs) > 500:
-        session.commit()
 
 
 def _find_nearest_store(session: Session, lat: float, lon: float):
@@ -298,6 +293,17 @@ def _find_nearest_store(session: Session, lat: float, lon: float):
     nearest = min(stores, key=lambda s: haversine_m(lat, lon, s.latitude, s.longitude))
     distance = haversine_m(lat, lon, nearest.latitude, nearest.longitude)
     return nearest, distance
+
+
+def _get_emulation_settings(session: Session) -> EmulationSettings:
+    """Henter (eller opretter) den ene, faste emuleringstilstand-række."""
+    settings = session.get(EmulationSettings, 1)
+    if settings is None:
+        settings = EmulationSettings(id=1, enabled=False)
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+    return settings
 
 
 def _get_proximity_state(session: Session) -> ProximityState:
@@ -330,12 +336,46 @@ def check_proximity(
     """
     stores = session.exec(select(Store)).all()
     state = _get_proximity_state(session)
+    emulation = _get_emulation_settings(session)
 
     if not stores:
         return {"should_notify": False, "store_name": None, "message": "Ingen butikker oprettet endnu."}
 
     nearest = min(stores, key=lambda s: haversine_m(lat, lon, s.latitude, s.longitude))
     distance = haversine_m(lat, lon, nearest.latitude, nearest.longitude)
+
+    if emulation.enabled:
+        # TEST-TILSTAND (slås til/fra i Diagnostik-fanen): emulerer at vi
+        # står ved nærmeste butik, UANSET faktisk afstand - bruger den
+        # RIGTIGE liste og den RIGTIGE nærmeste butik, så vi kan bekræfte
+        # at telefonen modtager notifikationer, og hvornår, uden selv at
+        # skulle stå i en butik. Ignorerer bevidst is_new_arrival/threshold,
+        # så den sender ved hvert eneste kald, mens den er slået til.
+        items = session.exec(
+            select(Item).where(Item.done == False).order_by(Item.added_at)  # noqa: E712
+        ).all()
+        if not items:
+            message = f"[TEST] Du har ikke noget på listen til {nearest.name}."
+            should_notify = False
+        else:
+            names = ", ".join(item.name for item in items)
+            message = f"[TEST] Du er ved {nearest.name}. Husk: {names}."
+            should_notify = True
+
+        if should_notify:
+            _log_notification(
+                session, lat, lon, nearest, round(distance), threshold_m, message, emulated=True
+            )
+        _log_proximity_check(session, lat, lon, nearest.name, round(distance), should_notify)
+
+        return {
+            "should_notify": should_notify,
+            "store_name": nearest.name,
+            "distance_m": round(distance),
+            "item_count": len(items),
+            "items": [item.name for item in items],
+            "message": message,
+        }
 
     if distance > threshold_m:
         # Uden for rækkevidde af enhver butik - nulstil hukommelsen, så
@@ -595,6 +635,30 @@ def missing_notification_log(limit: int = 50, session: Session = Depends(get_ses
             for log in logs
         ],
     }
+
+
+@app.get("/diagnostics/emulation-mode")
+def get_emulation_mode(session: Session = Depends(get_session)):
+    """Viser om test-tilstanden (emulering) er slået til eller fra."""
+    settings = _get_emulation_settings(session)
+    return {"enabled": settings.enabled, "updated_at": settings.updated_at.isoformat()}
+
+
+@app.post("/diagnostics/emulation-mode")
+def set_emulation_mode(enabled: bool, session: Session = Depends(get_session)):
+    """
+    Slår test-tilstanden til/fra. Når TIL, sender /webhook/check-proximity
+    en RIGTIG besked med den RIGTIGE liste ved hvert kald, uanset faktisk
+    afstand til nærmeste butik - så man kan bekræfte at telefonen modtager
+    notifikationer korrekt. HUSK at slå den fra igen efter test.
+    """
+    settings = _get_emulation_settings(session)
+    settings.enabled = enabled
+    settings.updated_at = datetime.utcnow()
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return {"enabled": settings.enabled, "updated_at": settings.updated_at.isoformat()}
 
 
 @app.get("/backup")
