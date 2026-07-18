@@ -81,3 +81,6 @@
    
 ## 2.0.11
    - Ny "Nulstil sidst notificeret"-knap i Diagnostik, til at rette op på fastlåst tilstand efter fejlede beskeder
+
+## 2.0.12
+   - Opdatering af hele systemet pga. forkert version nummer

@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-12 | Version: 2.0.9
+Sidst opdateret: 2026-07-12 | Version: 2.0.10
 
 Databasemodeller for indkøbsliste-appen.
 
