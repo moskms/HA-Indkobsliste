@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-07-18 | Version: 2.0.14 -->
+<!-- Sidst opdateret: 2026-07-18 | Version: 2.0.15 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -310,7 +310,7 @@
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">Version: 2.0.14</div>
+      <div id="menu-version">v2.0.15</div>
     </div>
   </div>
 
@@ -341,6 +341,13 @@
 
     <!-- Visning: Diagnostik -->
     <div id="view-diagnostics" class="view">
+      <button id="emulation-toggle-button" style="width:100%; padding:14px; margin-bottom:16px; border:none; border-radius:10px; color:white; cursor:pointer; font-size:1.05em;">Henter test-tilstand...</button>
+      <p style="color:#666; font-size:0.9em; margin-top:-8px; margin-bottom:20px;">
+        Grøn = TIL: sender en RIGTIG besked fra den rigtige liste ved hvert
+        kald, uanset faktisk afstand til nærmeste butik - god til at teste om
+        telefonen modtager notifikationer, og hvornår. Husk at slå den fra
+        igen efter test.
+      </p>
       <h2>Seneste positionstjek fra Home Assistant</h2>
       <p style="color:#666; font-size:0.9em;">
         Viser de seneste 30 kald til /webhook/check-proximity - bekræfter om HA
@@ -476,6 +483,7 @@
       }
       if (viewName === "diagnostics") {
         loadDiagnostics();
+        loadEmulationMode();
       }
       if (viewName === "notifications") {
         loadNotifications();
@@ -1022,6 +1030,53 @@
     }
 
     refreshDiagnosticsButton.addEventListener("click", loadDiagnostics);
+
+    // --- Test-tilstand (emulering) ---
+    const emulationToggleButton = document.getElementById("emulation-toggle-button");
+
+    function renderEmulationButton(enabled) {
+      if (enabled) {
+        emulationToggleButton.style.background = "#2f9e44";
+        emulationToggleButton.textContent = "🟢 Test-tilstand: TIL (sender rigtige beskeder nu)";
+      } else {
+        emulationToggleButton.style.background = "#c53030";
+        emulationToggleButton.textContent = "🔴 Test-tilstand: FRA";
+      }
+    }
+
+    async function loadEmulationMode() {
+      try {
+        const response = await fetch(`${API_BASE}/diagnostics/emulation-mode`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        renderEmulationButton(data.enabled);
+      } catch (err) {
+        emulationToggleButton.textContent = `Fejl: ${err.message}`;
+      }
+    }
+
+    emulationToggleButton.addEventListener("click", async () => {
+      const currentlyOn = emulationToggleButton.textContent.includes("TIL");
+      const newState = !currentlyOn;
+      emulationToggleButton.disabled = true;
+      try {
+        const response = await fetch(
+          `${API_BASE}/diagnostics/emulation-mode?enabled=${newState}`,
+          { method: "POST" }
+        );
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        renderEmulationButton(data.enabled);
+      } catch (err) {
+        emulationToggleButton.textContent = `Fejl: kunne ikke skifte (${err.message})`;
+      } finally {
+        emulationToggleButton.disabled = false;
+      }
+    });
 
     // --- Notifikationer (sendte beskeder) ---
     const notificationsListEl = document.getElementById("notifications-list");

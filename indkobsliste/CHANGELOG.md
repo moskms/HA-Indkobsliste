@@ -91,4 +91,6 @@
 ## 2.0.14
    - - - - - - 
 
-   
+## 2.0.15
+   - Manglende emulings knap
+
