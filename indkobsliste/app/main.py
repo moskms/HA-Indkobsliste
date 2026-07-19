@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-18 | Version: 2.0.16
+# Sidst opdateret: 2026-07-18 | Version: 2.0.18
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime
@@ -24,6 +24,7 @@ from app.models import (
     MissedNotificationReport,
     MissedNotificationReportCreate,
     EmulationSettings,
+    StoreDistanceCheck,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
@@ -380,6 +381,9 @@ def check_proximity(
     if distance > threshold_m:
         # Uden for rækkevidde af enhver butik - nulstil hukommelsen, så
         # næste besøg (i denne eller en anden butik) giver besked igen.
+        # Viser stadig HVILKEN butik der er nærmest og hvor langt der er
+        # dertil, selvom der (korrekt) ikke sendes nogen besked - nyttigt
+        # til diagnostik/"Tjek nu", hvor man ofte er uden for rækkevidde.
         if state.last_notified_store_id is not None:
             state.last_notified_store_id = None
             state.updated_at = datetime.utcnow()
@@ -388,9 +392,9 @@ def check_proximity(
         _log_proximity_check(session, lat, lon, nearest.name, round(distance), False)
         return {
             "should_notify": False,
-            "store_name": None,
+            "store_name": nearest.name,
             "distance_m": round(distance),
-            "message": "Ikke i nærheden af nogen kendt butik.",
+            "message": f"Ikke i nærheden af {nearest.name} endnu ({round(distance)} m væk, grænse: {threshold_m} m).",
         }
 
     # Inden for rækkevidde af 'nearest' - kun ny besked hvis det er en anden
@@ -659,6 +663,74 @@ def set_emulation_mode(enabled: bool, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(settings)
     return {"enabled": settings.enabled, "updated_at": settings.updated_at.isoformat()}
+
+
+@app.post("/diagnostics/log-all-store-distances")
+def log_all_store_distances(lat: float, lon: float, session: Session = Depends(get_session)):
+    """
+    Beregner og logger afstanden fra (lat, lon) til HVER ENESTE oprettede
+    butik - ikke kun den nærmeste. Bruges af "Tjek nu"-knappen til at
+    verificere at haversine-beregningen og "nærmeste butik"-udvælgelsen er
+    korrekt, ved at gøre ALLE afstande synlige på én gang, ikke kun den ene
+    check-proximity ellers vælger.
+    """
+    stores = session.exec(select(Store)).all()
+    if not stores:
+        return {"count": 0, "entries": []}
+
+    checked_at = datetime.utcnow()
+    results = []
+    for store in stores:
+        distance = round(haversine_m(lat, lon, store.latitude, store.longitude))
+        log_entry = StoreDistanceCheck(
+            checked_at=checked_at,
+            lat=lat,
+            lon=lon,
+            store_id=store.id,
+            store_name=store.name,
+            distance_m=distance,
+        )
+        session.add(log_entry)
+        results.append({
+            "store_id": store.id,
+            "store_name": store.name,
+            "store_latitude": store.latitude,
+            "store_longitude": store.longitude,
+            "distance_m": distance,
+        })
+    session.commit()
+
+    results.sort(key=lambda r: r["distance_m"])
+    return {
+        "checked_at": checked_at.isoformat(),
+        "lat": lat,
+        "lon": lon,
+        "count": len(results),
+        "entries": results,
+    }
+
+
+@app.get("/diagnostics/store-distance-log")
+def store_distance_log(limit: int = 100, session: Session = Depends(get_session)):
+    """Viser tidligere loggede afstandstjek til alle butikker, nyeste først."""
+    logs = session.exec(
+        select(StoreDistanceCheck)
+        .order_by(StoreDistanceCheck.checked_at.desc(), StoreDistanceCheck.distance_m.asc())
+        .limit(limit)
+    ).all()
+    return {
+        "count": len(logs),
+        "entries": [
+            {
+                "checked_at": log.checked_at.isoformat(),
+                "lat": log.lat,
+                "lon": log.lon,
+                "store_name": log.store_name,
+                "distance_m": log.distance_m,
+            }
+            for log in logs
+        ],
+    }
 
 
 @app.get("/backup")

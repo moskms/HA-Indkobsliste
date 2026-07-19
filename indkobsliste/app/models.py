@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-07-18 | Version: 2.0.16
+Sidst opdateret: 2026-07-18 | Version: 2.0.18
 
 Databasemodeller for indkøbsliste-appen.
 
@@ -147,3 +147,21 @@ class EmulationSettings(SQLModel, table=True):
     id: Optional[int] = Field(default=1, primary_key=True)
     enabled: bool = Field(default=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class StoreDistanceCheck(SQLModel, table=True):
+    """
+    Logger afstanden fra én position til HVER ENESTE oprettede butik, ikke
+    kun den nærmeste - til at verificere at haversine-beregningen og
+    udvælgelsen af "nærmeste butik" rent faktisk er korrekt. Oprettes af
+    "Tjek nu"-knappen i Diagnostik-fanen: alle rækker fra samme tjek deler
+    samme checked_at-tidsstempel (sat eksplicit af kaldet, ikke
+    default_factory), så de kan grupperes bagefter.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    checked_at: datetime
+    lat: float
+    lon: float
+    store_id: int
+    store_name: str
+    distance_m: int

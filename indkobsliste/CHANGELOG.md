@@ -97,3 +97,10 @@
 ## 2.0.16
    - tilføjer en knap, der henter telefonens/browserens egen GPS-position og sender den direkte til check-proximity-endpointet
    
+## 2.0.17
+   - Findes ikke
+
+## 2.0.18
+   - Oprettelse af log fil når Tjek nu knappen bruges
+   
+

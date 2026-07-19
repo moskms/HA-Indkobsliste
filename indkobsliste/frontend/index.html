@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-07-18 | Version: 2.0.16 -->
+<!-- Sidst opdateret: 2026-07-18 | Version: 2.0.18 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -310,7 +310,7 @@
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.16</div>
+      <div id="menu-version">v2.0.18</div>
     </div>
   </div>
 
@@ -1105,13 +1105,27 @@
               throw new Error(`Server svarede med status ${response.status}`);
             }
             const data = await response.json();
+
+            const allDistancesResponse = await fetch(
+              `${API_BASE}/diagnostics/log-all-store-distances?lat=${lat}&lon=${lon}`,
+              { method: "POST" }
+            );
+            let allDistancesHtml = "";
+            if (allDistancesResponse.ok) {
+              const allData = await allDistancesResponse.json();
+              const rows = allData.entries
+                .map((e, i) => `${i === 0 ? "→ " : "&nbsp;&nbsp;"}${e.store_name}: ${e.distance_m} m`)
+                .join("<br>");
+              allDistancesHtml = `<br><strong>Afstand til alle butikker (nærmeste øverst):</strong><br>${rows}`;
+            }
+
             const mapUrl = `https://www.google.com/maps?q=${lat},${lon}`;
             checkNowResultEl.innerHTML = `
               Position: ${lat.toFixed(6)}, ${lon.toFixed(6)} (±${accuracy} m)
               (<a href="${mapUrl}" target="_blank" rel="noopener">kort</a>)<br>
-              Nærmeste: ${data.store_name || "ingen"} · ${data.distance_m ?? "?"} m<br>
               Ville sende besked: ${data.should_notify ? "JA ✓" : "nej"}<br>
               ${data.message ? `Besked: "${data.message}"` : ""}
+              ${allDistancesHtml}
               <br><em>Dette kald er logget som ethvert andet tjek - se Diagnostik- og Notifikationer-listerne.</em>
             `;
           } catch (err) {
