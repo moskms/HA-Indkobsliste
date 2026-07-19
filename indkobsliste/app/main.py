@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-18 | Version: 2.0.15
+# Sidst opdateret: 2026-07-18 | Version: 2.0.16
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime

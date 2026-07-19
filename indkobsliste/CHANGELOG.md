@@ -94,3 +94,6 @@
 ## 2.0.15
    - Manglende emulings knap
 
+## 2.0.16
+   - tilføjer en knap, der henter telefonens/browserens egen GPS-position og sender den direkte til check-proximity-endpointet
+   
