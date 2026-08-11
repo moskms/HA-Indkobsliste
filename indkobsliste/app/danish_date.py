@@ -1,10 +1,12 @@
-# Sidst opdateret: 2026-08-11 | Version: 2.0.20
+# Sidst opdateret: 2026-08-11 | Version: 2.0.21
 """
 Fortolker talte danske datoer til rigtige datoer, fx:
 - "niende i syvende seksogtyve" -> 2026-07-09
 - "ni i syv seksogtyve" -> 2026-07-09 (grundtal i stedet for ordenstal)
 - "9 juli 2026" -> 2026-07-09
 - "09/07/26" -> 2026-07-09
+- "30 826" -> 2026-08-30 (talegenkendelsen har slået måned+år sammen, se
+  _split_combined_month_year)
 
 Bygget til at understøtte flere måder at sige/skrive en dato på, da
 talegenkendelse ikke altid giver samme format to gange. Dag og måned kan
@@ -101,6 +103,28 @@ def _parse_number(tokens: list[str], start: int) -> tuple[Optional[int], int]:
     return _parse_cardinal(tokens, start)
 
 
+def _split_combined_month_year(tok: str) -> Optional[tuple[int, int]]:
+    """Prøver at splitte ét sammenhængende tal som "826" eller "1226" i
+    måned + 2-cifret år. Talegenkendelsen slår nogle gange måned og år
+    sammen uden mellemrum, hvis de siges hurtigt efter hinanden (fx "8 26"
+    bliver til "826" i stedet for to separate ord/tal).
+    Returnerer (måned, fuldt år) eller None hvis tallet ikke giver mening
+    som en sådan sammensmeltning."""
+    if not tok.isdigit() or len(tok) not in (3, 4):
+        return None
+
+    candidates = []
+    if len(tok) == 4:
+        candidates.append((tok[:2], tok[2:]))  # fx "1226" -> måned 12, år 26
+    candidates.append((tok[:1], tok[1:]))  # fx "826" -> måned 8, år 26
+
+    for month_str, year_str in candidates:
+        month_val = int(month_str)
+        if 1 <= month_val <= 12 and len(year_str) == 2:
+            return month_val, _resolve_year(int(year_str))
+    return None
+
+
 def _resolve_year(value: int) -> int:
     """Omsætter et 2-cifret år til 20XX (fx 26 -> 2026)."""
     if value < 100:
@@ -149,6 +173,7 @@ def parse_danish_date(text: str) -> Optional[date]:
 
     # --- Måned ---
     month = None
+    year = None
     if tokens[idx] in MONTH_NAMES:
         month = MONTH_NAMES[tokens[idx]]
         idx += 1
@@ -158,16 +183,22 @@ def parse_danish_date(text: str) -> Optional[date]:
             month = month_val
             idx += consumed
         else:
-            return None
+            # Talegenkendelsen har nogle gange slået måned og år sammen til
+            # ét tal uden mellemrum, fx "8 26" -> "826". Prøv at splitte det.
+            split = _split_combined_month_year(tokens[idx])
+            if split is None:
+                return None
+            month, year = split
+            idx += 1
 
-    if idx >= len(tokens):
-        return None
-
-    # --- År ---
-    year, consumed = _parse_cardinal(tokens, idx)
+    # --- År --- (kun hvis ikke allerede udledt via måned+år-split ovenfor)
     if year is None:
-        return None
-    year = _resolve_year(year)
+        if idx >= len(tokens):
+            return None
+        year, consumed = _parse_cardinal(tokens, idx)
+        if year is None:
+            return None
+        year = _resolve_year(year)
 
     try:
         return date(year, month, day)

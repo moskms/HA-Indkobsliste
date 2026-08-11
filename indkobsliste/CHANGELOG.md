@@ -110,4 +110,8 @@
    - "Over dato"-flowet bruger nu rigtige popups i stedet for tekstfeedback: "Sig varens navn" -> "Indtal dato" -> godkend/prøv igen
    - "Prøv igen" genstarter hele optagelsen (navn + dato) uden at skulle skrive noget manuelt
    - Dansk datofortolkning forstår nu også grundtal ("tolv") og ikke kun ordenstal ("tolvte") - gælder alle tal fra 1-31
+
+## 2.0.21
+   - Rettet fejl: "Prøv igen" i Over dato-flowet kunne hænge fast for evigt, hvis telefonens talegenkendelse fejlede stille ved for hurtig genstart. Tilføjet pause, timeout og onend-håndtering, så flowet altid afsluttes med enten resultat eller en tydelig fejl-popup
+   - Rettet fejl: datoer hvor talegenkendelsen slår måned+år sammen uden mellemrum (fx "30 826" i stedet for "30 8 26") bliver nu fortolket korrekt
    

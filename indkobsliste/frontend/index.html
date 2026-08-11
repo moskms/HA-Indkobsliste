@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-11 | Version: 2.0.20 -->
+<!-- Sidst opdateret: 2026-08-11 | Version: 2.0.21 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -423,7 +423,7 @@
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.20</div>
+      <div id="menu-version">v2.0.21</div>
     </div>
   </div>
 
@@ -1526,6 +1526,11 @@
     }
 
     // Viser promptText som popup og starter stemmegenkendelse med det samme.
+    // Robust mod at telefonens talegenkendelse nogle gange fejler helt
+    // stille (hverken onresult eller onerror fyrer) hvis en ny lytning
+    // startes for tæt på den forrige - det gav tidligere et loop der hang
+    // for evigt på "Prøv igen". Derfor: lille pause før genstart,
+    // onend-håndtering, og en sikkerhedstimeout der altid afslutter promisen.
     function listenOnceForExpiry(promptText) {
       return new Promise((resolve, reject) => {
         if (!SpeechRecognitionClass) {
@@ -1533,15 +1538,44 @@
           return;
         }
         showExpiryMessage(promptText);
-        const recognition = new SpeechRecognitionClass();
-        recognition.lang = "da-DK";
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-        recognition.onresult = (event) => {
-          resolve(event.results[0][0].transcript.trim());
-        };
-        recognition.onerror = (event) => reject(new Error(event.error));
-        recognition.start();
+
+        setTimeout(() => {
+          const recognition = new SpeechRecognitionClass();
+          recognition.lang = "da-DK";
+          recognition.interimResults = false;
+          recognition.maxAlternatives = 1;
+
+          let settled = false;
+          let safetyTimer = null;
+          const finish = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(safetyTimer);
+            fn(value);
+          };
+
+          safetyTimer = setTimeout(() => {
+            try { recognition.abort(); } catch (e) { /* ignorer */ }
+            finish(reject, new Error("Ingen tale opfanget (timeout) - prøv igen"));
+          }, 12000);
+
+          recognition.onresult = (event) => {
+            finish(resolve, event.results[0][0].transcript.trim());
+          };
+          recognition.onerror = (event) => {
+            finish(reject, new Error(event.error));
+          };
+          recognition.onend = () => {
+            // Sluttede uden resultat og uden fejl - ville ellers hænge for evigt.
+            finish(reject, new Error("Stemmegenkendelse sluttede uden resultat - prøv igen"));
+          };
+
+          try {
+            recognition.start();
+          } catch (err) {
+            finish(reject, err);
+          }
+        }, 350);
       });
     }
 
@@ -1632,6 +1666,7 @@
           loadExpiryItems();
         }
       } catch (err) {
+        await showExpiryChoice(`Fejl: ${err.message}`, [{ label: "OK", value: "ok" }]);
         hideExpiryModal();
         expiryFeedbackEl.textContent = `Fejl: ${err.message}`;
       } finally {
