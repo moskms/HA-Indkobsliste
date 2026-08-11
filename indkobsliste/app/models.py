@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-07-19 | Version: 2.0.19
+# Sidst opdateret: 2026-08-11 | Version: 2.0.22
 """
 Databasemodeller for indkøbsliste-appen.
 """
@@ -130,3 +130,40 @@ class ExpiryItemCreate(BaseModel):
     """Input-schema til POST /expiry-items."""
     name: str
     expiry_date: date
+
+
+class VoiceCorrection(SQLModel, table=True):
+    """
+    Rettelsesliste for ord talegenkendelsen typisk hører forkert (fx
+    "roastbeef" -> "roskilde"). wrong_text gemmes altid små bogstaver, så
+    opslag ved brug kan være case-insensitivt uden ekstra logik.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    wrong_text: str
+    correct_text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VoiceCorrectionCreate(BaseModel):
+    wrong_text: str
+    correct_text: str
+
+
+class ExpiryNotificationSettings(SQLModel, table=True):
+    """
+    Én fast række (id=1) med indstillinger for den daglige "snart over
+    dato"-notifikation. last_notified_date forhindrer flere notifikationer
+    samme dag, uanset hvor ofte HA-automationen kalder tjek-endpointet.
+    """
+    id: Optional[int] = Field(default=1, primary_key=True)
+    enabled: bool = Field(default=True)
+    days_before: int = Field(default=2)
+    notify_time: str = Field(default="09:00")  # "HH:MM"
+    last_notified_date: Optional[date] = Field(default=None)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ExpiryNotificationSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    days_before: Optional[int] = None
+    notify_time: Optional[str] = None

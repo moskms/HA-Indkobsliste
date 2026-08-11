@@ -1,7 +1,7 @@
-# Sidst opdateret: 2026-07-19 | Version: 2.0.19
+# Sidst opdateret: 2026-08-11 | Version: 2.0.22
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import logging
 import os
 
@@ -27,6 +27,10 @@ from app.models import (
     StoreDistanceCheck,
     ExpiryItem,
     ExpiryItemCreate,
+    VoiceCorrection,
+    VoiceCorrectionCreate,
+    ExpiryNotificationSettings,
+    ExpiryNotificationSettingsUpdate,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
@@ -805,6 +809,163 @@ def delete_expiry_item(item_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Vare ikke fundet")
     session.delete(item)
     session.commit()
+
+
+# ===== Stemmerettelser: talegenkendelsen hører nogle ord konsekvent forkert =====
+# (fx "roastbeef" -> "roskilde"). Anvendes klient-side (i frontend) på
+# transskriberet tekst FØR den vises/gemmes, både på selve indkøbslisten og
+# i "Over dato"-flowet.
+
+@app.get("/voice-corrections")
+def list_voice_corrections(session: Session = Depends(get_session)):
+    """Henter alle gemte rettelser, til at bygge rettelses-cachen i frontend."""
+    corrections = session.exec(
+        select(VoiceCorrection).order_by(VoiceCorrection.wrong_text)
+    ).all()
+    return {
+        "count": len(corrections),
+        "entries": [
+            {"id": c.id, "wrong_text": c.wrong_text, "correct_text": c.correct_text}
+            for c in corrections
+        ],
+    }
+
+
+@app.post("/voice-corrections", response_model=VoiceCorrection)
+def add_voice_correction(
+    correction_in: VoiceCorrectionCreate, session: Session = Depends(get_session)
+):
+    """Opretter en ny rettelse. wrong_text gemmes altid i små bogstaver,
+    så opslag i frontend kan være case-insensitivt uden ekstra logik."""
+    wrong = correction_in.wrong_text.strip().lower()
+    correct = correction_in.correct_text.strip()
+    if not wrong or not correct:
+        raise HTTPException(status_code=400, detail="Begge felter skal udfyldes")
+    correction = VoiceCorrection(wrong_text=wrong, correct_text=correct)
+    session.add(correction)
+    session.commit()
+    session.refresh(correction)
+    return correction
+
+
+@app.delete("/voice-corrections/{correction_id}", status_code=204)
+def delete_voice_correction(correction_id: int, session: Session = Depends(get_session)):
+    """Sletter en rettelse permanent."""
+    correction = session.get(VoiceCorrection, correction_id)
+    if correction is None:
+        raise HTTPException(status_code=404, detail="Rettelse ikke fundet")
+    session.delete(correction)
+    session.commit()
+
+
+# ===== Udløbsnotifikation: daglig påmindelse om varer der snart går over dato =====
+
+def _get_expiry_notification_settings(session: Session) -> ExpiryNotificationSettings:
+    """Henter (eller opretter) den ene, faste indstillingsrække."""
+    settings = session.get(ExpiryNotificationSettings, 1)
+    if settings is None:
+        settings = ExpiryNotificationSettings(id=1)
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+    return settings
+
+
+def _serialize_expiry_notification_settings(s: ExpiryNotificationSettings) -> dict:
+    return {
+        "enabled": s.enabled,
+        "days_before": s.days_before,
+        "notify_time": s.notify_time,
+        "last_notified_date": s.last_notified_date.isoformat() if s.last_notified_date else None,
+    }
+
+
+@app.get("/settings/expiry-notification")
+def get_expiry_notification_settings(session: Session = Depends(get_session)):
+    """Henter de nuværende indstillinger for udløbsnotifikationen."""
+    return _serialize_expiry_notification_settings(_get_expiry_notification_settings(session))
+
+
+@app.patch("/settings/expiry-notification")
+def update_expiry_notification_settings(
+    update: ExpiryNotificationSettingsUpdate, session: Session = Depends(get_session)
+):
+    """Opdaterer indstillingerne. Kun de felter der rent faktisk sendes med,
+    bliver ændret."""
+    settings = _get_expiry_notification_settings(session)
+    if update.enabled is not None:
+        settings.enabled = update.enabled
+    if update.days_before is not None:
+        if update.days_before < 0:
+            raise HTTPException(status_code=400, detail="days_before skal være 0 eller derover")
+        settings.days_before = update.days_before
+    if update.notify_time is not None:
+        settings.notify_time = update.notify_time
+    settings.updated_at = datetime.utcnow()
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return _serialize_expiry_notification_settings(settings)
+
+
+@app.get("/webhook/check-expiring-soon")
+def check_expiring_soon(session: Session = Depends(get_session)):
+    """
+    Kaldes periodisk (fx hvert 5. minut) af en Home Assistant-automation.
+    Sender IKKE selv en push-notifikation - returnerer blot should_notify +
+    en besked, som automationen derefter sender via notify-servicen (samme
+    mønster som /webhook/check-proximity, hvor Python-appen aldrig selv
+    kalder HA's notify-API).
+
+    Bruger last_notified_date til kun at give ÉN notifikation pr. dag,
+    uanset hvor ofte automationen rent faktisk kalder dette endpoint - og
+    "nu >= notify_time" (i stedet for eksakt match) så det stadig virker
+    selvom automationen kun tjekker hvert 5./15. minut.
+    """
+    settings = _get_expiry_notification_settings(session)
+    today = date.today()
+    now_str = datetime.now().strftime("%H:%M")
+
+    if not settings.enabled:
+        return {"should_notify": False, "message": "Udløbsnotifikation er slået fra."}
+
+    if settings.last_notified_date == today:
+        return {"should_notify": False, "message": "Allerede sendt i dag."}
+
+    if now_str < settings.notify_time:
+        return {
+            "should_notify": False,
+            "message": f"Endnu ikke tid ({now_str} < {settings.notify_time}).",
+        }
+
+    threshold_date = today + timedelta(days=settings.days_before)
+    items = session.exec(
+        select(ExpiryItem)
+        .where(ExpiryItem.expiry_date >= today)
+        .where(ExpiryItem.expiry_date <= threshold_date)
+        .order_by(ExpiryItem.expiry_date)
+    ).all()
+
+    # Marker dagen som tjekket uanset udfald, så vi ikke bliver ved med at
+    # tjekke resten af dagen (og evt. rammer en race hvis automationen
+    # kalder meget hyppigt).
+    settings.last_notified_date = today
+    settings.updated_at = datetime.utcnow()
+    session.add(settings)
+    session.commit()
+
+    if not items:
+        return {"should_notify": False, "message": "Ingen varer udløber snart."}
+
+    names = ", ".join(f"{i.name} ({i.expiry_date.strftime('%d/%m')})" for i in items)
+    message = f"Snart over dato: {names}."
+
+    return {
+        "should_notify": True,
+        "item_count": len(items),
+        "items": [i.name for i in items],
+        "message": message,
+    }
 
 
 # Serverer den simple frontend-side. Tilgås via /app/index.html

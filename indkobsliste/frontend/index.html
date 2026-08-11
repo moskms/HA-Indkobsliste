@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-11 | Version: 2.0.21 -->
+<!-- Sidst opdateret: 2026-08-11 | Version: 2.0.22 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -403,6 +403,52 @@
       background: #e2e8f0;
       color: #333;
     }
+
+    /* --- Indstillinger --- */
+    .correction-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .settings-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .settings-input-row > label {
+      flex: 1;
+      font-size: 0.9em;
+      color: #555;
+    }
+    .settings-input-row input {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin-top: 4px;
+      font-size: 1em;
+      box-sizing: border-box;
+    }
+    .settings-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      font-size: 1em;
+    }
+    .settings-checkbox-row input {
+      width: 20px;
+      height: 20px;
+    }
+    #correction-wrong-input, #correction-correct-input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+      min-width: 0;
+    }
   </style>
 </head>
 <body>
@@ -423,7 +469,8 @@
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.21</div>
+      <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
+      <div id="menu-version">v2.0.22</div>
     </div>
   </div>
 
@@ -538,6 +585,47 @@
       <button id="restore-backup-button" style="width:100%; padding:14px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.05em;">⬆️ Gendan fra fil</button>
       <div id="backup-feedback" style="margin-top:12px; color:#555;"></div>
     </div>
+
+    <!-- Visning: Indstillinger -->
+    <div id="view-settings" class="view">
+      <h2>Stemmerettelser</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Hvis talegenkendelsen konsekvent hører et ord forkert (fx "roastbeef"
+        bliver til "roskilde"), kan du tilføje en rettelse her. Den bliver
+        anvendt automatisk på det du siger, både på selve indkøbslisten og i
+        "Over dato" - før varen vises eller gemmes.
+      </p>
+      <div id="voice-corrections-list" style="margin-bottom:12px;">Henter...</div>
+      <div style="display:flex; gap:8px; margin-bottom:28px;">
+        <input type="text" id="correction-wrong-input" placeholder="Hørt forkert som...">
+        <input type="text" id="correction-correct-input" placeholder="Skal rettes til...">
+        <button id="add-correction-button" style="padding:10px 16px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer; white-space:nowrap;">Gem</button>
+      </div>
+
+      <h2>Udløbsnotifikation</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Giver en daglig påmindelse hvis noget på "Over dato"-listen udløber
+        snart. Kræver en Home Assistant-automation der kalder
+        /webhook/check-expiring-soon periodisk - denne side styrer kun om
+        det er slået til, hvor mange dage før, og hvornår på dagen.
+      </p>
+      <label class="settings-checkbox-row">
+        <input type="checkbox" id="expiry-notify-enabled">
+        Aktivér daglig notifikation
+      </label>
+      <div class="settings-input-row">
+        <label>
+          Dage før udløb
+          <input type="number" id="expiry-notify-days-before" min="0" max="30">
+        </label>
+        <label>
+          Klokkeslæt
+          <input type="time" id="expiry-notify-time">
+        </label>
+      </div>
+      <button id="save-expiry-notify-settings-button" style="width:100%; padding:14px; border:none; border-radius:10px; background:#2f855a; color:white; cursor:pointer; font-size:1.05em;">Gem indstillinger</button>
+      <div id="expiry-notify-settings-feedback" style="margin-top:12px; color:#555;"></div>
+    </div>
   </main>
 
   <script>
@@ -559,6 +647,7 @@
       diagnostics: "Diagnostik",
       notifications: "Notifikationer",
       backup: "Backup",
+      settings: "Indstillinger",
     };
 
     function openMenu() {
@@ -627,6 +716,10 @@
       }
       if (viewName === "expiry") {
         loadExpiryItems();
+      }
+      if (viewName === "settings") {
+        loadVoiceCorrectionsView();
+        loadExpiryNotificationSettingsView();
       }
     }
 
@@ -793,8 +886,11 @@
       };
 
       recognition.onresult = async (event) => {
-        const spokenText = event.results[0][0].transcript.trim();
-        feedbackEl.textContent = `Hørte: "${spokenText}" - tilføjer...`;
+        const rawText = event.results[0][0].transcript.trim();
+        const spokenText = applyVoiceCorrection(rawText);
+        feedbackEl.textContent = spokenText !== rawText
+          ? `Hørte: "${rawText}" - rettet til "${spokenText}" - tilføjer...`
+          : `Hørte: "${spokenText}" - tilføjer...`;
 
         try {
           const response = await fetch(`${API_BASE}/items`, {
@@ -1600,7 +1696,8 @@
         while (retry) {
           retry = false;
 
-          const spokenName = await listenOnceForExpiry("🔴 Sig varens navn...");
+          const rawName = await listenOnceForExpiry("🔴 Sig varens navn...");
+          const spokenName = applyVoiceCorrection(rawName);
           const spokenDate = await listenOnceForExpiry(
             `Vare: "${spokenName}"\n\n🔴 Indtal dato...\n(fx "tolv i syv seksogtyve")`
           );
@@ -1674,6 +1771,145 @@
         expiryButton.disabled = false;
       }
     }
+
+    // --- Indstillinger: Stemmerettelser ---
+    // Cache af alle rettelser, brugt til at rette transskriberet tale FØR
+    // den vises/gemmes - både på selve indkøbslisten og i Over dato-flowet.
+    // Hentes én gang ved opstart, og genindlæses når listen ændres på
+    // Indstillinger-siden.
+    let voiceCorrectionsCache = [];
+
+    async function loadVoiceCorrectionsCache() {
+      try {
+        const response = await fetch(`${API_BASE}/voice-corrections`);
+        if (!response.ok) return;
+        const data = await response.json();
+        voiceCorrectionsCache = data.entries;
+      } catch (err) {
+        console.error("Kunne ikke hente stemmerettelser:", err.message);
+      }
+    }
+
+    // Slår teksten op case-insensitivt mod rettelseslisten. Kun eksakt match
+    // på hele den talte tekst (ikke delstrenge), da det bruges til varenavne.
+    function applyVoiceCorrection(text) {
+      const lower = text.trim().toLowerCase();
+      const match = voiceCorrectionsCache.find((c) => c.wrong_text === lower);
+      return match ? match.correct_text : text;
+    }
+
+    loadVoiceCorrectionsCache();
+
+    const voiceCorrectionsListEl = document.getElementById("voice-corrections-list");
+    const correctionWrongInput = document.getElementById("correction-wrong-input");
+    const correctionCorrectInput = document.getElementById("correction-correct-input");
+    const addCorrectionButton = document.getElementById("add-correction-button");
+
+    function renderVoiceCorrectionsList(entries) {
+      voiceCorrectionsListEl.innerHTML = "";
+      if (entries.length === 0) {
+        voiceCorrectionsListEl.textContent = "Ingen rettelser tilføjet endnu.";
+        return;
+      }
+      for (const c of entries) {
+        const row = document.createElement("div");
+        row.className = "store-card correction-card";
+        row.innerHTML = `
+          <div>"${c.wrong_text}" &rarr; <strong>${c.correct_text}</strong></div>
+          <button class="remove-store-btn" style="flex:none; padding:6px 12px;">Slet</button>
+        `;
+        row.querySelector("button").addEventListener("click", async () => {
+          await fetch(`${API_BASE}/voice-corrections/${c.id}`, { method: "DELETE" });
+          loadVoiceCorrectionsView();
+        });
+        voiceCorrectionsListEl.appendChild(row);
+      }
+    }
+
+    async function loadVoiceCorrectionsView() {
+      voiceCorrectionsListEl.textContent = "Henter...";
+      try {
+        const response = await fetch(`${API_BASE}/voice-corrections`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        voiceCorrectionsCache = data.entries; // opdater cachen samtidig
+        renderVoiceCorrectionsList(data.entries);
+      } catch (err) {
+        voiceCorrectionsListEl.textContent = `Fejl: kunne ikke hente rettelser (${err.message})`;
+      }
+    }
+
+    addCorrectionButton.addEventListener("click", async () => {
+      const wrong = correctionWrongInput.value.trim();
+      const correct = correctionCorrectInput.value.trim();
+      if (!wrong || !correct) {
+        alert("Udfyld begge felter.");
+        return;
+      }
+      try {
+        const response = await fetch(`${API_BASE}/voice-corrections`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wrong_text: wrong, correct_text: correct }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        correctionWrongInput.value = "";
+        correctionCorrectInput.value = "";
+        loadVoiceCorrectionsView();
+      } catch (err) {
+        alert(`Kunne ikke gemme rettelsen: ${err.message}`);
+      }
+    });
+
+    // --- Indstillinger: Udløbsnotifikation ---
+    const expiryNotifyEnabledEl = document.getElementById("expiry-notify-enabled");
+    const expiryNotifyDaysBeforeEl = document.getElementById("expiry-notify-days-before");
+    const expiryNotifyTimeEl = document.getElementById("expiry-notify-time");
+    const saveExpiryNotifySettingsButton = document.getElementById("save-expiry-notify-settings-button");
+    const expiryNotifySettingsFeedbackEl = document.getElementById("expiry-notify-settings-feedback");
+
+    async function loadExpiryNotificationSettingsView() {
+      expiryNotifySettingsFeedbackEl.textContent = "Henter...";
+      try {
+        const response = await fetch(`${API_BASE}/settings/expiry-notification`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        expiryNotifyEnabledEl.checked = data.enabled;
+        expiryNotifyDaysBeforeEl.value = data.days_before;
+        expiryNotifyTimeEl.value = data.notify_time;
+        expiryNotifySettingsFeedbackEl.textContent = data.last_notified_date
+          ? `Sidst sendt: ${new Date(data.last_notified_date).toLocaleDateString("da-DK")}`
+          : "Endnu ikke sendt nogen notifikation.";
+      } catch (err) {
+        expiryNotifySettingsFeedbackEl.textContent = `Fejl: kunne ikke hente indstillinger (${err.message})`;
+      }
+    }
+
+    saveExpiryNotifySettingsButton.addEventListener("click", async () => {
+      try {
+        const response = await fetch(`${API_BASE}/settings/expiry-notification`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: expiryNotifyEnabledEl.checked,
+            days_before: parseInt(expiryNotifyDaysBeforeEl.value, 10),
+            notify_time: expiryNotifyTimeEl.value,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        expiryNotifySettingsFeedbackEl.textContent = "Gemt ✓";
+      } catch (err) {
+        expiryNotifySettingsFeedbackEl.textContent = `Fejl: kunne ikke gemme (${err.message})`;
+      }
+    });
   </script>
 </body>
 </html>

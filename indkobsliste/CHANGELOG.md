@@ -114,4 +114,9 @@
 ## 2.0.21
    - Rettet fejl: "Prøv igen" i Over dato-flowet kunne hænge fast for evigt, hvis telefonens talegenkendelse fejlede stille ved for hurtig genstart. Tilføjet pause, timeout og onend-håndtering, så flowet altid afsluttes med enten resultat eller en tydelig fejl-popup
    - Rettet fejl: datoer hvor talegenkendelsen slår måned+år sammen uden mellemrum (fx "30 826" i stedet for "30 8 26") bliver nu fortolket korrekt
+
+## 2.0.22
+   - Ny "⚙️ Indstillinger"-fane
+   - Stemmerettelser: ord talegenkendelsen konsekvent hører forkert (fx "roastbeef" -> "roskilde") kan nu tilføjes som en rettelse, der anvendes automatisk på både indkøbslisten og Over dato
+   - Ny daglig udløbsnotifikation: nyt endpoint /webhook/check-expiring-soon (til en ny HA-automation) advarer når varer på Over dato-listen udløber inden for et konfigurerbart antal dage, på et konfigurerbart klokkeslæt - styres fra Indstillinger-fanen
    
