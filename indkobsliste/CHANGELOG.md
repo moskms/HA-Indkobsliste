@@ -105,4 +105,9 @@
    
 ## 2.0.19
    - Ny "Over dato"-funktion: indtal vare + dato, automatisk dansk datofortolkning, overskredne varer lægges automatisk tilbage på indkøbslisten
+
+## 2.0.20
+   - "Over dato"-flowet bruger nu rigtige popups i stedet for tekstfeedback: "Sig varens navn" -> "Indtal dato" -> godkend/prøv igen
+   - "Prøv igen" genstarter hele optagelsen (navn + dato) uden at skulle skrive noget manuelt
+   - Dansk datofortolkning forstår nu også grundtal ("tolv") og ikke kun ordenstal ("tolvte") - gælder alle tal fra 1-31
    

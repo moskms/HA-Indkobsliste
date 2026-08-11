@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-07-19 | Version: 2.0.19 -->
+<!-- Sidst opdateret: 2026-08-11 | Version: 2.0.20 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -353,6 +353,56 @@
     #existing-stores-list {
       margin-bottom: 20px;
     }
+
+    /* --- Over dato: stemmeflow-popup --- */
+    #expiry-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 30;
+      align-items: center;
+      justify-content: center;
+    }
+    #expiry-modal-overlay.open {
+      display: flex;
+    }
+    #expiry-modal-box {
+      background: white;
+      border-radius: 12px;
+      padding: 26px 22px;
+      max-width: 320px;
+      width: 85%;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    #expiry-modal-message {
+      font-size: 1.15em;
+      line-height: 1.5;
+      margin-bottom: 20px;
+      white-space: pre-line;
+    }
+    #expiry-modal-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .expiry-modal-btn {
+      padding: 13px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.05em;
+      cursor: pointer;
+      background: #2b6cb0;
+      color: white;
+    }
+    .expiry-modal-btn.approve {
+      background: #2f855a;
+    }
+    .expiry-modal-btn.secondary {
+      background: #e2e8f0;
+      color: #333;
+    }
   </style>
 </head>
 <body>
@@ -373,7 +423,15 @@
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.19</div>
+      <div id="menu-version">v2.0.20</div>
+    </div>
+  </div>
+
+  <!-- Popup til "Over dato"-stemmeflowet (sig navn -> sig dato -> godkend/prøv igen) -->
+  <div id="expiry-modal-overlay">
+    <div id="expiry-modal-box">
+      <div id="expiry-modal-message"></div>
+      <div id="expiry-modal-buttons"></div>
     </div>
   </div>
 
@@ -1435,17 +1493,50 @@
       }
     }
 
+    // --- Popup-hjælpere til "Over dato"-flowet ---
+    const expiryModalOverlayEl = document.getElementById("expiry-modal-overlay");
+    const expiryModalMessageEl = document.getElementById("expiry-modal-message");
+    const expiryModalButtonsEl = document.getElementById("expiry-modal-buttons");
+
+    // Viser en popup med kun en besked (bruges mens der lyttes/fortolkes) - ingen knapper.
+    function showExpiryMessage(message) {
+      expiryModalMessageEl.textContent = message;
+      expiryModalButtonsEl.innerHTML = "";
+      expiryModalOverlayEl.classList.add("open");
+    }
+
+    // Viser en popup med valgknapper og returnerer et promise der resolver med den valgte knaps "value".
+    function showExpiryChoice(message, choices) {
+      return new Promise((resolve) => {
+        expiryModalMessageEl.textContent = message;
+        expiryModalButtonsEl.innerHTML = "";
+        for (const choice of choices) {
+          const btn = document.createElement("button");
+          btn.textContent = choice.label;
+          btn.className = "expiry-modal-btn" + (choice.style ? ` ${choice.style}` : "");
+          btn.addEventListener("click", () => resolve(choice.value));
+          expiryModalButtonsEl.appendChild(btn);
+        }
+        expiryModalOverlayEl.classList.add("open");
+      });
+    }
+
+    function hideExpiryModal() {
+      expiryModalOverlayEl.classList.remove("open");
+    }
+
+    // Viser promptText som popup og starter stemmegenkendelse med det samme.
     function listenOnceForExpiry(promptText) {
       return new Promise((resolve, reject) => {
         if (!SpeechRecognitionClass) {
           reject(new Error("Stemmegenkendelse ikke understøttet i denne browser"));
           return;
         }
+        showExpiryMessage(promptText);
         const recognition = new SpeechRecognitionClass();
         recognition.lang = "da-DK";
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
-        expiryFeedbackEl.textContent = promptText;
         recognition.onresult = (event) => {
           resolve(event.results[0][0].transcript.trim());
         };
@@ -1458,42 +1549,77 @@
       expiryButton.disabled = true;
       expiryButton.textContent = "⏰ Ikke understøttet i denne browser";
     } else {
-      expiryButton.addEventListener("click", async () => {
-        expiryButton.classList.add("listening");
-        expiryButton.disabled = true;
-        try {
-          const spokenName = await listenOnceForExpiry("🔴 Sig varens navn...");
-          expiryFeedbackEl.textContent = `Vare: "${spokenName}" - sig nu datoen...`;
+      expiryButton.addEventListener("click", () => {
+        runExpiryCaptureFlow();
+      });
+    }
 
+    // Fuldt flow: popup "sig varens navn" -> popup "indtal dato" -> popup med
+    // navn+dato til godkendelse. "Prøv igen" genstarter hele optagelsen forfra,
+    // så en fejlhørt vare eller dato nemt kan rettes uden at skrive noget manuelt.
+    async function runExpiryCaptureFlow() {
+      expiryButton.classList.add("listening");
+      expiryButton.disabled = true;
+      expiryFeedbackEl.textContent = "";
+      try {
+        let retry = true;
+        while (retry) {
+          retry = false;
+
+          const spokenName = await listenOnceForExpiry("🔴 Sig varens navn...");
           const spokenDate = await listenOnceForExpiry(
-            `Vare: "${spokenName}" - 🔴 sig datoen (fx "niende i syvende seksogtyve")...`
+            `Vare: "${spokenName}"\n\n🔴 Indtal dato...\n(fx "tolv i syv seksogtyve")`
           );
-          expiryFeedbackEl.textContent = `Fortolker "${spokenDate}"...`;
+          showExpiryMessage("Fortolker datoen...");
 
           const parseResponse = await fetch(
             `${API_BASE}/parse-date?text=${encodeURIComponent(spokenDate)}`,
             { method: "POST" }
           );
           const parseResult = await parseResponse.json();
-
           let finalDate = parseResult.parsed_date;
+
           if (!finalDate) {
-            const manualDate = prompt(
-              `Kunne ikke forstå datoen "${spokenDate}". Indtast manuelt (ÅÅÅÅ-MM-DD):`
+            const choice = await showExpiryChoice(
+              `Kunne ikke forstå datoen "${spokenDate}".`,
+              [
+                { label: "🔁 Prøv igen", value: "retry" },
+                { label: "✏️ Indtast dato manuelt", value: "manual" },
+                { label: "Annullér", value: "cancel", style: "secondary" },
+              ]
             );
+            if (choice === "retry") {
+              retry = true;
+              continue;
+            }
+            if (choice === "cancel") {
+              hideExpiryModal();
+              expiryFeedbackEl.textContent = "Annulleret.";
+              return;
+            }
+            hideExpiryModal();
+            const manualDate = prompt(`Indtast dato for "${spokenName}" (ÅÅÅÅ-MM-DD):`);
             if (!manualDate) {
               expiryFeedbackEl.textContent = "Annulleret.";
               return;
             }
             finalDate = manualDate;
           } else {
-            const confirmed = confirm(`Gem "${spokenName}" med dato ${finalDate}?`);
-            if (!confirmed) {
-              expiryFeedbackEl.textContent = "Annulleret.";
-              return;
+            const dateStr = new Date(finalDate).toLocaleDateString("da-DK");
+            const choice = await showExpiryChoice(
+              `"${spokenName}"\n${dateStr}`,
+              [
+                { label: "✅ Godkend", value: "approve", style: "approve" },
+                { label: "🔁 Prøv igen", value: "retry", style: "secondary" },
+              ]
+            );
+            if (choice === "retry") {
+              retry = true;
+              continue;
             }
           }
 
+          hideExpiryModal();
           const saveResponse = await fetch(`${API_BASE}/expiry-items`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1504,13 +1630,14 @@
           }
           expiryFeedbackEl.textContent = `Gemt: "${spokenName}" ✓`;
           loadExpiryItems();
-        } catch (err) {
-          expiryFeedbackEl.textContent = `Fejl: ${err.message}`;
-        } finally {
-          expiryButton.classList.remove("listening");
-          expiryButton.disabled = false;
         }
-      });
+      } catch (err) {
+        hideExpiryModal();
+        expiryFeedbackEl.textContent = `Fejl: ${err.message}`;
+      } finally {
+        expiryButton.classList.remove("listening");
+        expiryButton.disabled = false;
+      }
     }
   </script>
 </body>

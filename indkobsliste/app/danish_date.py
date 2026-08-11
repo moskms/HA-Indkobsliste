@@ -1,12 +1,15 @@
-# Sidst opdateret: 2026-07-10 | Version: 2.0.12
+# Sidst opdateret: 2026-08-11 | Version: 2.0.20
 """
 Fortolker talte danske datoer til rigtige datoer, fx:
 - "niende i syvende seksogtyve" -> 2026-07-09
+- "ni i syv seksogtyve" -> 2026-07-09 (grundtal i stedet for ordenstal)
 - "9 juli 2026" -> 2026-07-09
 - "09/07/26" -> 2026-07-09
 
 Bygget til at understøtte flere måder at sige/skrive en dato på, da
-talegenkendelse ikke altid giver samme format to gange.
+talegenkendelse ikke altid giver samme format to gange. Dag og måned kan
+siges enten som ordenstal ("tolvte") eller grundtal ("tolv") - Morten siger
+i praksis ofte grundtal, så begge accepteres overalt.
 """
 import re
 from datetime import date
@@ -42,14 +45,25 @@ TENS = {
     "tres": 60, "halvfjerds": 70, "firs": 80, "halvfems": 90,
 }
 
+# Grundtal 1-99 samlet i én opslagstabel, så både dag/måned og år kan
+# fortolkes fra grundtal ("tolv") og ikke kun ordenstal ("tolvte").
+CARDINALS: dict = {}
+CARDINALS.update({word: value for word, value in UNITS.items() if value > 0})  # 1-9
+CARDINALS.update(TEENS)  # 10-19
+CARDINALS.update(TENS)  # 20, 30, 40 ... 90 (rene tiere)
+for _tens_word, _tens_val in TENS.items():
+    for _unit_word, _unit_val in UNITS.items():
+        if _unit_val == 0:
+            continue
+        CARDINALS[f"{_unit_word}og{_tens_word}"] = _tens_val + _unit_val  # fx "enogtyve" -> 21
+
 STOPWORDS = {"i", "den", "det", "d.", "på"}
 
 
 def _parse_cardinal(tokens: list[str], start: int) -> tuple[Optional[int], int]:
-    """Prøver at læse et grundtal (til årstal) fra tokens[start:], fx
-    ['seksogtyve'] -> 26, eller ['seks', 'og', 'tyve'] -> 26 (hvis
-    talegenkendelsen har splittet det sammensatte ord op).
-    Returnerer (tal, antal_tokens_brugt) eller (None, 0)."""
+    """Prøver at læse et grundtal fra tokens[start:], fx ['seksogtyve'] -> 26,
+    eller ['seks', 'og', 'tyve'] -> 26 (hvis talegenkendelsen har splittet
+    det sammensatte ord op). Returnerer (tal, antal_tokens_brugt) eller (None, 0)."""
     if start >= len(tokens):
         return None, 0
     tok = tokens[start]
@@ -68,20 +82,23 @@ def _parse_cardinal(tokens: list[str], start: int) -> tuple[Optional[int], int]:
     ):
         return UNITS[tokens[start]] + TENS[tokens[start + 2]], 3
 
-    # Sammensat ord i ét, fx "seksogtyve"
-    if tok in TENS:
-        return TENS[tok], 1
-    if tok in TEENS:
-        return TEENS[tok], 1
-    if tok in UNITS:
-        return UNITS[tok], 1
-    for tens_word, tens_val in TENS.items():
-        for unit_word, unit_val in UNITS.items():
-            combined = f"{unit_word}og{tens_word}"
-            if tok == combined:
-                return tens_val + unit_val, 1
+    if tok in CARDINALS:
+        return CARDINALS[tok], 1
 
     return None, 0
+
+
+def _parse_number(tokens: list[str], start: int) -> tuple[Optional[int], int]:
+    """Læser et tal fra tokens[start:] til brug for dag/måned - accepterer
+    både ordenstal ("tolvte") og grundtal ("tolv"), da Morten i praksis
+    bruger begge i flæng. Prøver ordenstal først (mest utvetydigt), derefter
+    grundtal (inkl. splittet form som "en og tyve").
+    Returnerer (tal, antal_tokens_brugt) eller (None, 0)."""
+    if start >= len(tokens):
+        return None, 0
+    if tokens[start] in ORDINALS:
+        return ORDINALS[tokens[start]], 1
+    return _parse_cardinal(tokens, start)
 
 
 def _resolve_year(value: int) -> int:
@@ -120,34 +137,28 @@ def parse_danish_date(text: str) -> Optional[date]:
     if not tokens:
         return None
 
-    # --- Dag ---
-    day = None
+    # --- Dag --- (ordenstal "niende"/"tolvte" eller grundtal "ni"/"tolv")
     idx = 0
-    if tokens[idx].isdigit():
-        day = int(tokens[idx])
-        idx += 1
-    elif tokens[idx] in ORDINALS:
-        day = ORDINALS[tokens[idx]]
-        idx += 1
-    else:
+    day, consumed = _parse_number(tokens, idx)
+    if day is None:
         return None
+    idx += consumed
 
     if idx >= len(tokens):
         return None
 
     # --- Måned ---
     month = None
-    if tokens[idx].isdigit():
-        month = int(tokens[idx])
-        idx += 1
-    elif tokens[idx] in MONTH_NAMES:
+    if tokens[idx] in MONTH_NAMES:
         month = MONTH_NAMES[tokens[idx]]
         idx += 1
-    elif tokens[idx] in ORDINALS and ORDINALS[tokens[idx]] <= 12:
-        month = ORDINALS[tokens[idx]]
-        idx += 1
     else:
-        return None
+        month_val, consumed = _parse_number(tokens, idx)
+        if month_val is not None and 1 <= month_val <= 12:
+            month = month_val
+            idx += consumed
+        else:
+            return None
 
     if idx >= len(tokens):
         return None
