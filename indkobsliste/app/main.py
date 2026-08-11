@@ -1,7 +1,7 @@
-# Sidst opdateret: 2026-07-18 | Version: 2.0.18
+# Sidst opdateret: 2026-07-19 | Version: 2.0.19
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 import logging
 import os
 
@@ -25,9 +25,12 @@ from app.models import (
     MissedNotificationReportCreate,
     EmulationSettings,
     StoreDistanceCheck,
+    ExpiryItem,
+    ExpiryItemCreate,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
+from app.danish_date import parse_danish_date
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
@@ -237,14 +240,7 @@ def _log_proximity_check(
     distance_m: Optional[int],
     should_notify: bool,
 ) -> None:
-    """Logger et proximity-tjek til diagnostik.
-
-    MIDLERTIDIGT under testfasen (fra v2.0.9): INGEN oprydning/rotation her -
-    vi beholder alle rækker, så vi kan undersøge episoder langt tilbage i
-    tiden (fx "jeg fik ikke en besked i morges"). Selv et helt års logning
-    ved 1 kald/minut fylder under 100 MB i SQLite, så det er uproblematisk
-    at lade stå på under testen. Genindfør en grænse (fx tidsbaseret,
-    "behold 90 dage") når vi er tilfredse med stabiliteten."""
+    """Logger et proximity-tjek til diagnostik."""
     log_entry = ProximityCheckLog(
         lat=lat,
         lon=lon,
@@ -286,8 +282,7 @@ def _log_notification(
 
 def _find_nearest_store(session: Session, lat: float, lon: float):
     """Finder nærmeste butik og afstanden til den, eller (None, None) hvis
-    ingen butikker er oprettet endnu. Samme logik som bruges i check_proximity,
-    udtrukket her så rapporterings-endpointet kan genbruge den."""
+    ingen butikker er oprettet endnu."""
     stores = session.exec(select(Store)).all()
     if not stores:
         return None, None
@@ -346,12 +341,6 @@ def check_proximity(
     distance = haversine_m(lat, lon, nearest.latitude, nearest.longitude)
 
     if emulation.enabled:
-        # TEST-TILSTAND (slås til/fra i Diagnostik-fanen): emulerer at vi
-        # står ved nærmeste butik, UANSET faktisk afstand - bruger den
-        # RIGTIGE liste og den RIGTIGE nærmeste butik, så vi kan bekræfte
-        # at telefonen modtager notifikationer, og hvornår, uden selv at
-        # skulle stå i en butik. Ignorerer bevidst is_new_arrival/threshold,
-        # så den sender ved hvert eneste kald, mens den er slået til.
         items = session.exec(
             select(Item).where(Item.done == False).order_by(Item.added_at)  # noqa: E712
         ).all()
@@ -379,11 +368,6 @@ def check_proximity(
         }
 
     if distance > threshold_m:
-        # Uden for rækkevidde af enhver butik - nulstil hukommelsen, så
-        # næste besøg (i denne eller en anden butik) giver besked igen.
-        # Viser stadig HVILKEN butik der er nærmest og hvor langt der er
-        # dertil, selvom der (korrekt) ikke sendes nogen besked - nyttigt
-        # til diagnostik/"Tjek nu", hvor man ofte er uden for rækkevidde.
         if state.last_notified_store_id is not None:
             state.last_notified_store_id = None
             state.updated_at = datetime.utcnow()
@@ -397,8 +381,6 @@ def check_proximity(
             "message": f"Ikke i nærheden af {nearest.name} endnu ({round(distance)} m væk, grænse: {threshold_m} m).",
         }
 
-    # Inden for rækkevidde af 'nearest' - kun ny besked hvis det er en anden
-    # butik end sidst, eller hvis vi ikke har advaret om nogen for nylig.
     is_new_arrival = state.last_notified_store_id != nearest.id
 
     if is_new_arrival:
@@ -417,9 +399,6 @@ def check_proximity(
         names = ", ".join(item.name for item in items)
         message = f"Du er ved {nearest.name}. Husk: {names}."
 
-    # Kun rent faktisk notifikationsværdigt hvis det er en ny ankomst OG der
-    # står noget på listen - ingen grund til at forstyrre med en besked om
-    # at listen er tom.
     should_notify = is_new_arrival and len(items) > 0
 
     if should_notify:
@@ -471,18 +450,11 @@ def stores_nearby(lat: float, lon: float, radius_m: int = 100):
 def ha_position(entity_id: str = "device_tracker.samsung_s23_ultra"):
     """
     Spørger Home Assistants EGEN API om hvad den lige nu har registreret
-    som position for en given device_tracker-enhed. Bruges til at
-    sammenligne "hvad telefonens browser selv ser" (vist i header'en)
-    med "hvad HA rent faktisk har liggende" - hvis de to afviger
-    markant, bekræfter det at HA's baggrunds-lokationsopdatering halter.
-
-    Kræver 'homeassistant_api: true' i config.yaml, som automatisk giver
-    denne container adgang via SUPERVISOR_TOKEN miljøvariablen.
+    som position for en given device_tracker-enhed.
 
     Svarer altid med HTTP 200, selv ved fejl - fejldetaljer ligger i stedet
     i "success"/"error"-felterne. Det er bevidst: Cloudflare erstatter
-    automatisk 4xx/5xx-svar med sin egen generiske fejlside, hvilket ville
-    skjule vores faktiske, brugbare fejlbesked.
+    automatisk 4xx/5xx-svar med sin egen generiske fejlside.
     """
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
@@ -517,12 +489,7 @@ def ha_position(entity_id: str = "device_tracker.samsung_s23_ultra"):
 
 @app.get("/diagnostics/proximity-log")
 def proximity_log(limit: int = 30, session: Session = Depends(get_session)):
-    """
-    Viser de seneste proximity-tjek, til fejlsøgning direkte i appen.
-    Gør det muligt at se om Home Assistant rent faktisk kalder
-    /webhook/check-proximity regelmæssigt, og hvilke koordinater den
-    sender - uden at skulle grave i HA's egne logs.
-    """
+    """Viser de seneste proximity-tjek, til fejlsøgning direkte i appen."""
     logs = session.exec(
         select(ProximityCheckLog)
         .order_by(ProximityCheckLog.checked_at.desc())
@@ -546,13 +513,7 @@ def proximity_log(limit: int = 30, session: Session = Depends(get_session)):
 
 @app.get("/diagnostics/notification-log")
 def notification_log(limit: int = 50, session: Session = Depends(get_session)):
-    """
-    Viser de seneste RENT FAKTISK udløste notifikationer (should_notify=True),
-    med telefonens position og den butik der udløste beskeden. Modsat
-    /diagnostics/proximity-log (som roterer efter 200/30 rækker og drukner i
-    "ikke i nærheden"-tjek), dækker denne langt længere tid tilbage - god til
-    at undersøge falske positiver bagudrettet.
-    """
+    """Viser de seneste RENT FAKTISK udløste notifikationer."""
     logs = session.exec(
         select(NotificationLog)
         .order_by(NotificationLog.notified_at.desc())
@@ -582,13 +543,7 @@ def notification_log(limit: int = 50, session: Session = Depends(get_session)):
 def report_missing_notification(
     report_in: MissedNotificationReportCreate, session: Session = Depends(get_session)
 ):
-    """
-    Kaldes fra appen, når du selv opdager at en forventet besked IKKE kom -
-    fx mens du står i en butik med varer på listen. Beregner nærmeste butik
-    og afstand på RAPPORTERINGSTIDSPUNKTET (samme logik som check-proximity),
-    og gemmer det til senere sammenligning med hvad HA's periodiske kald
-    reelt så på samme tidspunkt (via /diagnostics/proximity-log).
-    """
+    """Kaldes fra appen, når du selv opdager at en forventet besked IKKE kom."""
     nearest, distance = _find_nearest_store(session, report_in.lat, report_in.lon)
 
     item_count = len(
@@ -650,12 +605,7 @@ def get_emulation_mode(session: Session = Depends(get_session)):
 
 @app.post("/diagnostics/emulation-mode")
 def set_emulation_mode(enabled: bool, session: Session = Depends(get_session)):
-    """
-    Slår test-tilstanden til/fra. Når TIL, sender /webhook/check-proximity
-    en RIGTIG besked med den RIGTIGE liste ved hvert kald, uanset faktisk
-    afstand til nærmeste butik - så man kan bekræfte at telefonen modtager
-    notifikationer korrekt. HUSK at slå den fra igen efter test.
-    """
+    """Slår test-tilstanden til/fra."""
     settings = _get_emulation_settings(session)
     settings.enabled = enabled
     settings.updated_at = datetime.utcnow()
@@ -667,13 +617,7 @@ def set_emulation_mode(enabled: bool, session: Session = Depends(get_session)):
 
 @app.post("/diagnostics/log-all-store-distances")
 def log_all_store_distances(lat: float, lon: float, session: Session = Depends(get_session)):
-    """
-    Beregner og logger afstanden fra (lat, lon) til HVER ENESTE oprettede
-    butik - ikke kun den nærmeste. Bruges af "Tjek nu"-knappen til at
-    verificere at haversine-beregningen og "nærmeste butik"-udvælgelsen er
-    korrekt, ved at gøre ALLE afstande synlige på én gang, ikke kun den ene
-    check-proximity ellers vælger.
-    """
+    """Beregner og logger afstanden fra (lat, lon) til HVER ENESTE oprettede butik."""
     stores = session.exec(select(Store)).all()
     if not stores:
         return {"count": 0, "entries": []}
@@ -735,11 +679,7 @@ def store_distance_log(limit: int = 100, session: Session = Depends(get_session)
 
 @app.get("/backup")
 def create_backup(session: Session = Depends(get_session)):
-    """
-    Eksporterer alle butikker og varer som JSON. Brug denne FØR risikable
-    ændringer (versionsopgraderinger, geninstallation af appen, HA-opdateringer),
-    så data altid kan gendannes, uanset hvad der går galt på HA-siden.
-    """
+    """Eksporterer alle butikker og varer som JSON."""
     stores = session.exec(select(Store)).all()
     items = session.exec(select(Item)).all()
 
@@ -764,11 +704,7 @@ def create_backup(session: Session = Depends(get_session)):
 
 @app.post("/restore")
 def restore_backup(backup: dict, session: Session = Depends(get_session)):
-    """
-    Gendanner butikker og varer fra en JSON-backup (fra /backup).
-    Tilføjer til eksisterende data - sletter IKKE noget i forvejen,
-    så det er sikkert at bruge selvom der allerede er lidt data.
-    """
+    """Gendanner butikker og varer fra en JSON-backup (fra /backup)."""
     stores_added = 0
     items_added = 0
 
@@ -795,6 +731,80 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
         "stores_restored": stores_added,
         "items_restored": items_added,
     }
+
+
+# ===== Over dato: varer derhjemme med en holdbarhedsdato =====
+
+@app.post("/parse-date")
+def parse_date_endpoint(text: str):
+    """
+    Fortolker en talt/skrevet dansk dato-tekst (fx "niende i syvende
+    seksogtyve") til en rigtig dato. Bruges af "Over dato"-knappen, mellem
+    at datoen tales ind og den vises til bekræftelse.
+    """
+    result = parse_danish_date(text)
+    return {"input": text, "parsed_date": result.isoformat() if result else None}
+
+
+@app.post("/expiry-items", response_model=ExpiryItem)
+def add_expiry_item(item_in: ExpiryItemCreate, session: Session = Depends(get_session)):
+    """Registrerer en vare derhjemme med en holdbarhedsdato."""
+    name = item_in.name.strip()
+    if name:
+        name = name[0].upper() + name[1:]
+    item = ExpiryItem(name=name, expiry_date=item_in.expiry_date)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@app.get("/expiry-items")
+def list_expiry_items(session: Session = Depends(get_session)):
+    """
+    Henter alle 'over dato'-varer. Tjekker samtidig om nogen er blevet
+    overskredet siden sidst, og lægger dem i så fald automatisk tilbage på
+    selve indkøbslisten (kun én gang pr. vare, styret af
+    added_to_shopping_list).
+    """
+    today = date.today()
+    all_items = session.exec(select(ExpiryItem).order_by(ExpiryItem.expiry_date)).all()
+
+    for item in all_items:
+        if item.expiry_date < today and not item.added_to_shopping_list:
+            shopping_name = item.name
+            if shopping_name:
+                shopping_name = shopping_name[0].upper() + shopping_name[1:]
+            session.add(Item(name=shopping_name))
+            item.added_to_shopping_list = True
+            session.add(item)
+    session.commit()
+
+    all_items = session.exec(select(ExpiryItem).order_by(ExpiryItem.expiry_date)).all()
+
+    return {
+        "count": len(all_items),
+        "entries": [
+            {
+                "id": i.id,
+                "name": i.name,
+                "expiry_date": i.expiry_date.isoformat(),
+                "is_expired": i.expiry_date < today,
+                "added_to_shopping_list": i.added_to_shopping_list,
+            }
+            for i in all_items
+        ],
+    }
+
+
+@app.delete("/expiry-items/{item_id}", status_code=204)
+def delete_expiry_item(item_id: int, session: Session = Depends(get_session)):
+    """Sletter en 'over dato'-vare permanent."""
+    item = session.get(ExpiryItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Vare ikke fundet")
+    session.delete(item)
+    session.commit()
 
 
 # Serverer den simple frontend-side. Tilgås via /app/index.html

@@ -1,13 +1,8 @@
+# Sidst opdateret: 2026-07-19 | Version: 2.0.19
 """
-Sidst opdateret: 2026-07-18 | Version: 2.0.18
-
 Databasemodeller for indkøbsliste-appen.
-
-To tabeller i denne omgang:
-- Item: varer på indkøbslisten
-- Store: faste butikker med koordinater (bruges senere til geofencing)
 """
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from pydantic import BaseModel
@@ -26,19 +21,17 @@ class Store(SQLModel, table=True):
     name: str
     latitude: float
     longitude: float
-    radius_m: int = Field(default=50)  # geofence-radius i meter
-    osm_id: Optional[str] = Field(default=None)  # hvis fundet via Overpass
-    shop_type: Optional[str] = Field(default=None)  # fx 'supermarket', 'bakery' - fra OSM
+    radius_m: int = Field(default=50)
+    osm_id: Optional[str] = Field(default=None)
+    shop_type: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ItemCreate(BaseModel):
-    """Input-schema til POST /items - kun navnet er nødvendigt."""
     name: str
 
 
 class StoreCreate(BaseModel):
-    """Input-schema til POST /stores - manuel oprettelse af en fast butik."""
     name: str
     latitude: float
     longitude: float
@@ -48,9 +41,6 @@ class StoreCreate(BaseModel):
 
 
 class StoreUpdate(BaseModel):
-    """Input-schema til PATCH /stores/{id} - bruges enten til GPS-kalibrering
-    (koordinater/radius), eller til at omdøbe en butik, så flere butikker med
-    samme kædenavn (fx 'Netto') kan skelnes fra hinanden."""
     name: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -58,24 +48,12 @@ class StoreUpdate(BaseModel):
 
 
 class ProximityState(SQLModel, table=True):
-    """
-    Enkelt-række-tabel der husker hvilken butik der sidst er blevet
-    notificeret om, så løbende positionstjek (fx hvert minut) ikke
-    sender samme besked igen og igen, mens man stadig er i nærheden.
-    Nulstilles når man bevæger sig væk fra alle butikker igen.
-    """
     id: Optional[int] = Field(default=1, primary_key=True)
     last_notified_store_id: Optional[int] = Field(default=None)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ProximityCheckLog(SQLModel, table=True):
-    """
-    Logger hvert kald til /webhook/check-proximity, til diagnostik.
-    Gør det muligt at se direkte i appen om Home Assistant rent faktisk
-    kalder endpointet regelmæssigt, og hvilke koordinater den sender -
-    uden at skulle grave i HA's egne logs/historik.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
     checked_at: datetime = Field(default_factory=datetime.utcnow)
     lat: float
@@ -86,15 +64,6 @@ class ProximityCheckLog(SQLModel, table=True):
 
 
 class NotificationLog(SQLModel, table=True):
-    """
-    Logger hver gang en proximity-notifikation RENT FAKTISK udløses
-    (should_notify=True i /webhook/check-proximity). Modsat ProximityCheckLog
-    (som logger ALLE kald, inkl. "ikke i nærheden"), indeholder denne kun de
-    events hvor en besked reelt blev sendt til telefonen - så historikken
-    dækker langt længere tid tilbage (ingen 30-rækkers begrænsning i praksis),
-    og gør det muligt bagudrettet at se præcis hvilken position telefonen
-    havde, og hvilken butik/afstand der udløste en given besked.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
     notified_at: datetime = Field(default_factory=datetime.utcnow)
     lat: float
@@ -110,14 +79,6 @@ class NotificationLog(SQLModel, table=True):
 
 
 class MissedNotificationReport(SQLModel, table=True):
-    """
-    Brugerens EGEN rapport om at en forventet notifikation IKKE blev modtaget
-    - oprettes manuelt via en knap i appen, mens man står ved/på vej til en
-    butik og ved at der er varer på listen. Gemmer telefonens position samt
-    den nærmeste butik/afstand PÅ RAPPORTERINGSTIDSPUNKTET, beregnet med
-    samme logik som /webhook/check-proximity - så rapporten bagefter kan
-    sammenholdes med hvad HA's periodiske kald reelt så på samme tidspunkt.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
     reported_at: datetime = Field(default_factory=datetime.utcnow)
     lat: float
@@ -129,35 +90,18 @@ class MissedNotificationReport(SQLModel, table=True):
 
 
 class MissedNotificationReportCreate(BaseModel):
-    """Input-schema til POST /diagnostics/report-missing-notification."""
     lat: float
     lon: float
     note: Optional[str] = None
 
 
 class EmulationSettings(SQLModel, table=True):
-    """
-    Enkelt-række-tabel der styrer TEST-TILSTANDEN i Diagnostik-fanen.
-    Når enabled=True, tvinger /webhook/check-proximity should_notify=True
-    for nærmeste butik (med den RIGTIGE besked fra den rigtige liste),
-    uanset faktisk afstand - så man kan bekræfte at telefonen modtager
-    notifikationer, og hvornår, uden selv at skulle stå i en butik.
-    HUSK at slå den fra igen efter test, ellers sender den ved hvert kald.
-    """
     id: Optional[int] = Field(default=1, primary_key=True)
     enabled: bool = Field(default=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class StoreDistanceCheck(SQLModel, table=True):
-    """
-    Logger afstanden fra én position til HVER ENESTE oprettede butik, ikke
-    kun den nærmeste - til at verificere at haversine-beregningen og
-    udvælgelsen af "nærmeste butik" rent faktisk er korrekt. Oprettes af
-    "Tjek nu"-knappen i Diagnostik-fanen: alle rækker fra samme tjek deler
-    samme checked_at-tidsstempel (sat eksplicit af kaldet, ikke
-    default_factory), så de kan grupperes bagefter.
-    """
     id: Optional[int] = Field(default=None, primary_key=True)
     checked_at: datetime
     lat: float
@@ -165,3 +109,24 @@ class StoreDistanceCheck(SQLModel, table=True):
     store_id: int
     store_name: str
     distance_m: int
+
+
+class ExpiryItem(SQLModel, table=True):
+    """
+    En vare derhjemme med en holdbarhedsdato (IKKE en vare der skal købes -
+    det er selve Item-tabellen). Bruges til at holde styr på hvad der er
+    gået over dato, og lægger automatisk varen tilbage på selve indkøbslisten
+    når datoen overskrides (styret af added_to_shopping_list, så det kun
+    sker én gang pr. vare).
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    expiry_date: date
+    added_at: datetime = Field(default_factory=datetime.utcnow)
+    added_to_shopping_list: bool = Field(default=False)
+
+
+class ExpiryItemCreate(BaseModel):
+    """Input-schema til POST /expiry-items."""
+    name: str
+    expiry_date: date

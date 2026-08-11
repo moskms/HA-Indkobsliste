@@ -103,4 +103,6 @@
 ## 2.0.18
    - Oprettelse af log fil når Tjek nu knappen bruges
    
-
+## 2.0.19
+   - Ny "Over dato"-funktion: indtal vare + dato, automatisk dansk datofortolkning, overskredne varer lægges automatisk tilbage på indkøbslisten
+   

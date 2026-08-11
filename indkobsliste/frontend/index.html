@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-07-18 | Version: 2.0.18 -->
+<!-- Sidst opdateret: 2026-07-19 | Version: 2.0.19 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -187,6 +187,68 @@
       min-height: 1.4em;
       margin: 8px 0;
     }
+    #expiry-button {
+      width: 100%;
+      padding: 18px;
+      margin: 0 0 16px 0;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 10px;
+      background: #c53030;
+      color: white;
+      cursor: pointer;
+    }
+    #expiry-button.listening {
+      background: #7a1f1f;
+    }
+    #expiry-button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    #expiry-voice-feedback {
+      text-align: center;
+      color: #555;
+      min-height: 1.4em;
+      margin-bottom: 8px;
+    }
+    .expiry-card {
+      background: white;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .expiry-card.expired {
+      background: #c53030;
+      color: white;
+    }
+    .expiry-card .expiry-name {
+      font-size: 1.05em;
+      font-weight: 600;
+    }
+    .expiry-card .expiry-date {
+      font-size: 0.9em;
+      margin-top: 2px;
+    }
+    .expiry-card.expired .expiry-date {
+      color: #ffe0e0;
+    }
+    .expiry-card:not(.expired) .expiry-date {
+      color: #888;
+    }
+    .expiry-remove-btn {
+      margin-top: 8px;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.08);
+      color: inherit;
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .expiry-card.expired .expiry-remove-btn {
+      background: rgba(255,255,255,0.25);
+    }
     .suggestion-btn {
       display: block;
       width: 100%;
@@ -307,10 +369,11 @@
     <div id="menu-panel">
       <button class="menu-item active" data-view="list">🛒 Indkøbsliste</button>
       <button class="menu-item" data-view="stores">🏬 Butikker</button>
+      <button class="menu-item" data-view="expiry">⏰ Over dato</button>
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
-      <div id="menu-version">v2.0.18</div>
+      <div id="menu-version">v2.0.19</div>
     </div>
   </div>
 
@@ -319,6 +382,8 @@
     <div id="view-list" class="view active">
       <button id="mic-button">🎤 Tilføj vare</button>
       <div id="voice-feedback"></div>
+      <button id="expiry-button">⏰ Over dato</button>
+      <div id="expiry-voice-feedback"></div>
       <div id="status">Henter...</div>
       <ul id="list"></ul>
       <div id="empty" style="display: none;">Listen er tom 🎉</div>
@@ -337,6 +402,16 @@
 
       <h2>Dine butikker</h2>
       <div id="existing-stores-list">Henter...</div>
+    </div>
+
+    <!-- Visning: Over dato -->
+    <div id="view-expiry" class="view">
+      <h2>Registrerede varer</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Varer der er over dato bliver automatisk lagt tilbage på selve
+        indkøbslisten, og vist med rødt her.
+      </p>
+      <div id="expiry-list">Henter...</div>
     </div>
 
     <!-- Visning: Diagnostik -->
@@ -422,6 +497,7 @@
     const VIEW_TITLES = {
       list: "Indkøbsliste",
       stores: "Butikker",
+      expiry: "Over dato",
       diagnostics: "Diagnostik",
       notifications: "Notifikationer",
       backup: "Backup",
@@ -490,6 +566,9 @@
       if (viewName === "notifications") {
         loadNotifications();
         loadMissingLog();
+      }
+      if (viewName === "expiry") {
+        loadExpiryItems();
       }
     }
 
@@ -1317,6 +1396,122 @@
         backupFeedbackEl.textContent = `Fejl ved gendannelse: ${err.message}`;
       }
     });
+
+    // --- Over dato ---
+    const expiryButton = document.getElementById("expiry-button");
+    const expiryFeedbackEl = document.getElementById("expiry-voice-feedback");
+    const expiryListEl = document.getElementById("expiry-list");
+
+    async function loadExpiryItems() {
+      expiryListEl.textContent = "Henter...";
+      try {
+        const response = await fetch(`${API_BASE}/expiry-items`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        expiryListEl.innerHTML = "";
+        if (data.entries.length === 0) {
+          expiryListEl.textContent = "Ingen varer registreret endnu.";
+          return;
+        }
+        for (const item of data.entries) {
+          const card = document.createElement("div");
+          card.className = "expiry-card" + (item.is_expired ? " expired" : "");
+          const dateStr = new Date(item.expiry_date).toLocaleDateString("da-DK");
+          card.innerHTML = `
+            <div class="expiry-name">${item.name}</div>
+            <div class="expiry-date">${item.is_expired ? "Over dato: " : "Holdbar til: "}${dateStr}</div>
+            <button class="expiry-remove-btn">Fjern</button>
+          `;
+          card.querySelector(".expiry-remove-btn").addEventListener("click", async () => {
+            await fetch(`${API_BASE}/expiry-items/${item.id}`, { method: "DELETE" });
+            loadExpiryItems();
+          });
+          expiryListEl.appendChild(card);
+        }
+      } catch (err) {
+        expiryListEl.textContent = `Fejl: kunne ikke hente varer (${err.message})`;
+      }
+    }
+
+    function listenOnceForExpiry(promptText) {
+      return new Promise((resolve, reject) => {
+        if (!SpeechRecognitionClass) {
+          reject(new Error("Stemmegenkendelse ikke understøttet i denne browser"));
+          return;
+        }
+        const recognition = new SpeechRecognitionClass();
+        recognition.lang = "da-DK";
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        expiryFeedbackEl.textContent = promptText;
+        recognition.onresult = (event) => {
+          resolve(event.results[0][0].transcript.trim());
+        };
+        recognition.onerror = (event) => reject(new Error(event.error));
+        recognition.start();
+      });
+    }
+
+    if (!SpeechRecognitionClass) {
+      expiryButton.disabled = true;
+      expiryButton.textContent = "⏰ Ikke understøttet i denne browser";
+    } else {
+      expiryButton.addEventListener("click", async () => {
+        expiryButton.classList.add("listening");
+        expiryButton.disabled = true;
+        try {
+          const spokenName = await listenOnceForExpiry("🔴 Sig varens navn...");
+          expiryFeedbackEl.textContent = `Vare: "${spokenName}" - sig nu datoen...`;
+
+          const spokenDate = await listenOnceForExpiry(
+            `Vare: "${spokenName}" - 🔴 sig datoen (fx "niende i syvende seksogtyve")...`
+          );
+          expiryFeedbackEl.textContent = `Fortolker "${spokenDate}"...`;
+
+          const parseResponse = await fetch(
+            `${API_BASE}/parse-date?text=${encodeURIComponent(spokenDate)}`,
+            { method: "POST" }
+          );
+          const parseResult = await parseResponse.json();
+
+          let finalDate = parseResult.parsed_date;
+          if (!finalDate) {
+            const manualDate = prompt(
+              `Kunne ikke forstå datoen "${spokenDate}". Indtast manuelt (ÅÅÅÅ-MM-DD):`
+            );
+            if (!manualDate) {
+              expiryFeedbackEl.textContent = "Annulleret.";
+              return;
+            }
+            finalDate = manualDate;
+          } else {
+            const confirmed = confirm(`Gem "${spokenName}" med dato ${finalDate}?`);
+            if (!confirmed) {
+              expiryFeedbackEl.textContent = "Annulleret.";
+              return;
+            }
+          }
+
+          const saveResponse = await fetch(`${API_BASE}/expiry-items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: spokenName, expiry_date: finalDate }),
+          });
+          if (!saveResponse.ok) {
+            throw new Error(`Server svarede med status ${saveResponse.status}`);
+          }
+          expiryFeedbackEl.textContent = `Gemt: "${spokenName}" ✓`;
+          loadExpiryItems();
+        } catch (err) {
+          expiryFeedbackEl.textContent = `Fejl: ${err.message}`;
+        } finally {
+          expiryButton.classList.remove("listening");
+          expiryButton.disabled = false;
+        }
+      });
+    }
   </script>
 </body>
 </html>
