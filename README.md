@@ -1,3 +1,4 @@
+<!-- Sidst opdateret: 2026-08-12 -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -7,7 +8,9 @@ simpel HTML/JS-frontend.
 Ideen er enkel: du tilføjer varer til listen hjemmefra (eller med stemmen, på
 farten), og når du senere nærmer dig en af dine faste butikker, sender Home
 Assistant automatisk en notifikation til telefonen med det, du mangler at
-købe – uden at du selv skal huske at åbne en app.
+købe – uden at du selv skal huske at åbne en app. Suppleret med en "over
+dato"-funktion til varer derhjemme, talt dato-indtastning, og en daglig
+udløbspåmindelse.
 
 ## Hvad kan den?
 
@@ -22,6 +25,15 @@ købe – uden at du selv skal huske at åbne en app.
   minut om du er tæt på en kendt butik. Appen husker selv hvornår du sidst er
   blevet advaret, så du ikke får samme besked igen og igen, mens du står
   stille i butikken
+- **Over dato** – registrer varer derhjemme med en talt holdbarhedsdato via et
+  popup-flow: sig varens navn → indtal dato → godkend eller prøv igen. Dansk
+  datofortolkning forstår både ordenstal ("tolvte") og grundtal ("tolv"),
+  månedsnavne og numeriske formater. Overskredne varer lægges automatisk
+  tilbage på selve indkøbslisten
+- **Indstillinger** – stemmerettelser (ord talegenkendelsen konsekvent hører
+  forkert, fx "roastbeef" hørt som "roskilde", rettes automatisk før det
+  vises/gemmes), og en konfigurerbar daglig notifikation for varer der snart
+  går over dato (antal dage før + klokkeslæt)
 - **Diagnostik** – se de seneste positionstjek og udløste notifikationer
   direkte i appen, uden at skulle grave i Home Assistants egne logs
 - **Backup/gendan** – download og upload en JSON-backup af alle butikker og
@@ -32,7 +44,7 @@ købe – uden at du selv skal huske at åbne en app.
 | Del | Teknologi |
 |---|---|
 | Backend | FastAPI + SQLite (SQLModel) |
-| Frontend | Én statisk HTML/JS-fil, tabs til Indkøbsliste/Butikker/Diagnostik/Backup |
+| Frontend | Én statisk HTML/JS-fil, tabs til Indkøbsliste/Butikker/Over dato/Diagnostik/Notifikationer/Backup/Indstillinger |
 | Hosting | Home Assistant add-on, installeret via dette GitHub-repo |
 | Ekstern adgang | Cloudflare Tunnel |
 
@@ -48,6 +60,7 @@ indkobsliste/
     database.py         ← init/migration af SQLite
     overpass.py         ← butiksopslag via OpenStreetMap Overpass
     nominatim.py         ← fallback-opslag + afstandsberegning
+    danish_date.py       ← fortolker talte/skrevne danske datoer til rigtige datoer
   frontend/
     index.html          ← hele frontenden
 ```
@@ -72,18 +85,23 @@ om du er hjemme på wifi eller ej.
 
 ### 2. Home Assistant-siden (automation + rest_command)
 
-Tilføj følgende i `configuration.yaml`:
+Tilføj følgende i `configuration.yaml` (begge rest-kald under samme
+`rest_command:`-nøgle – YAML tillader kun én i toppen af filen):
 
 ```yaml
 rest_command:
   indkobsliste_check_proximity:
     url: "http://localhost:8000/webhook/check-proximity?lat={{ lat }}&lon={{ lon }}&threshold_m=50"
     method: GET
+
+  indkobsliste_check_expiring_soon:
+    url: "http://localhost:8000/webhook/check-expiring-soon"
+    method: GET
 ```
 
-Opret derefter en automation (fx `automations/indkobsliste_proximity.yaml`,
-**husk `- ` foran `alias:`** hvis den ligger i sin egen fil under
-`!include_dir_merge_list`):
+Opret derefter en automation for nærheds-notifikationer (fx
+`automations/indkobsliste_proximity.yaml`, **husk `- ` foran `alias:`** hvis
+den ligger i sin egen fil under `!include_dir_merge_list`):
 
 ```yaml
 - id: "indkobsliste_proximity_check"
@@ -115,6 +133,31 @@ Udskift `device_tracker.DIN_TELEFON` og `notify.DIT_NOTIFY_SERVICE` med dine
 egne entity-navne (se punkt 3 nedenfor for hvordan du finder det rigtige
 notify-navn).
 
+**Valgfrit – daglig udløbsnotifikation:** hvis du bruger "Over dato" og vil
+have en daglig påmindelse, opret også en automation der kalder
+`/webhook/check-expiring-soon` periodisk (fx hvert 5. minut). Selve
+klokkeslættet og antal dage før udløb styres fra appens Indstillinger-fane,
+ikke fra automationen – den må derfor gerne tjekke oftere end den rent
+faktisk sender noget, endpointet sørger selv for kun én besked pr. dag:
+
+```yaml
+- id: "indkobsliste_expiry_notify"
+  alias: Indkøbsliste - udløbsnotifikation
+  triggers:
+    - minutes: /5
+      trigger: time_pattern
+  conditions: []
+  actions:
+    - action: rest_command.indkobsliste_check_expiring_soon
+      response_variable: expiry_check
+    - condition: template
+      value_template: "{{ expiry_check.content.should_notify }}"
+    - action: notify.DIT_NOTIFY_SERVICE
+      data:
+        title: Over dato snart
+        message: "{{ expiry_check.content.message }}"
+```
+
 ### 3. Telefonen
 
 1. Installer **Home Assistant Companion App** (Android/iOS) og log ind på din
@@ -138,6 +181,10 @@ notify-navn).
 - [x] Butiksoprettelse manuelt og automatisk via GPS (Overpass + Nominatim-fallback)
 - [x] GPS-kalibrering af butiksradius
 - [x] Stateful nærheds-webhook, der undgår gentagne notifikationer
+- [x] Over dato: talt dato-indtastning via popup-flow, med godkend/prøv igen
+- [x] Dansk datofortolkning: ordenstal, grundtal, månedsnavne og numeriske formater
+- [x] Stemmerettelsesliste til ord talegenkendelsen konsekvent hører forkert
+- [x] Daglig, konfigurerbar udløbsnotifikation for varer der snart går over dato
 - [x] Diagnostik-fane med positionstjek og HA-position-sammenligning
 - [x] Backup/gendan-funktion
 - [x] Robust automation-opsætning (overlever fejlede kald uden at crashe)
@@ -168,6 +215,12 @@ notify-navn).
   ved geninstallation
 - Tjek altid det faktiske notify-servicenavn via Developer Tools, stol ikke på
   et gæt ud fra telefonens modelnavn
+- Kun ét `rest_command:` og ét `automation:` som topnøgle i `configuration.yaml`
+  – nye rest-kald tilføjes som en ny undernøgle i det eksisterende block, ikke
+  som et nyt separat block
+- Home Assistant 2024.8/2024.10 omdøbte automation-nøgler (`service:` →
+  `action:`, `platform:` → `trigger:`) – gammel syntaks virker stadig, men
+  VS Code-extensionen flager den som forældet
 
 ## Licens
 
