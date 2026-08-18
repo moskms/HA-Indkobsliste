@@ -128,3 +128,7 @@
    - Ny add-on-option ANTHROPIC_API_KEY (Konfiguration-fanen i HA) - kræves for at scanningen virker, sættes aldrig i kode/git
    - Billedet skaleres og komprimeres i browseren (maks 1600px, JPEG) før upload, for hurtigere upload og billigere Claude-kald
 
+## 2.0.24
+   - "Scan bon" åbner nu en in-app kameravisning (i stedet for telefonens egen kamera-app) med en lys/torch-knap - nyttigt til ældre, falmede termopapir-bonner, hvor Claude ellers kan fejlaflæse små, udviskede cifre (bekræftet: dato blev læst forkert på en ældre bon, men helt korrekt på en frisk-printet bon)
+   - Falder automatisk tilbage til telefonens egen kamera-app, hvis in-app kameraet/lyset ikke understøttes (fx iOS Safari)
+
