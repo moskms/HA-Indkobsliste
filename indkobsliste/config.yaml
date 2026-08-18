@@ -1,6 +1,6 @@
 name: "Indkøbsliste"
-version: "2.0.22"
-slug: "indkobsliste" 
+version: "2.0.23"
+slug: "indkobsliste"
 description: "Indkøbsliste med stemmeinput og automatisk butiksopslag"
 arch:
   - aarch64
@@ -14,3 +14,11 @@ ports_description:
   8000/tcp: "Web-grænseflade og API"
 webui: "http://[HOST]:[PORT:8000]/app/index.html"
 homeassistant_api: true
+# ANTHROPIC_API_KEY bruges af "Indscan bon" til at sende et bon-billede til
+# Claude og få butik/varer/pris tilbage som struktureret tekst - se
+# app/receipt_scan.py. Sættes her (add-on-option), ikke hardcoded eller i git.
+# Tomt = "Indscan bon" viser en tydelig fejl i stedet for at fejle stille.
+options:
+  anthropic_api_key: ""
+schema:
+  anthropic_api_key: "str?"

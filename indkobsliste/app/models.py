@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-11 | Version: 2.0.22
+# Sidst opdateret: 2026-08-18 | Version: 2.0.23
 """
 Databasemodeller for indkøbsliste-appen.
 """
@@ -167,3 +167,48 @@ class ExpiryNotificationSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
     days_before: Optional[int] = None
     notify_time: Optional[str] = None
+
+
+# ===== Indscan bon: bonner scannes med kameraet og udledes til struktureret
+# tekst via Claude - selve billedet gemmes ALDRIG, hverken permanent eller
+# midlertidigt (se app/receipt_scan.py og main.py's /receipts/scan). =====
+
+class Receipt(SQLModel, table=True):
+    """Én scannet/manuelt indtastet bon. `raw_model_output` gemmer Claudes
+    ubearbejdede JSON-svar (til fejlsøgning hvis noget ser forkert ud efter
+    godkendelse) - stadig ren tekst, aldrig billedet selv."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    store_name: str
+    purchase_date: Optional[date] = Field(default=None)
+    total: Optional[float] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    raw_model_output: Optional[str] = Field(default=None)
+
+
+class ReceiptItem(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    receipt_id: int = Field(foreign_key="receipt.id")
+    name: str
+    price: float
+    quantity: float = Field(default=1)
+
+
+class ReceiptItemInput(BaseModel):
+    """Input-schema for én varelinje ved POST /receipts - bruges både til
+    Claudes forslag (som brugeren kan rette i gennemsyns-skærmen) og til
+    fuldt manuel indtastning."""
+    name: str
+    price: float
+    quantity: float = 1
+
+
+class ReceiptCreate(BaseModel):
+    """Input-schema til POST /receipts - det ENDELIGE, godkendte (evt.
+    rettede) resultat, uanset om det kom fra en Claude-scanning eller blev
+    tastet manuelt. raw_model_output er kun sat, hvis det rent faktisk kom
+    fra en scanning."""
+    store_name: str
+    purchase_date: Optional[date] = None
+    total: Optional[float] = None
+    items: list[ReceiptItemInput] = []
+    raw_model_output: Optional[str] = None

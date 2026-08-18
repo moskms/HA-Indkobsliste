@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-11 | Version: 2.0.22 -->
+<!-- Sidst opdateret: 2026-08-18 | Version: 2.0.23 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -404,6 +404,96 @@
       color: #333;
     }
 
+    /* --- Indscan bon --- */
+    .receipt-item-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .receipt-item-row input {
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 0.95em;
+      min-width: 0;
+    }
+    .receipt-item-name { flex: 2; }
+    .receipt-item-price { flex: 1; }
+    .receipt-item-qty { flex: 1; }
+    .receipt-item-remove {
+      padding: 8px 10px;
+      border: none;
+      border-radius: 6px;
+      background: #c53030;
+      color: white;
+      cursor: pointer;
+    }
+    .receipt-choice-btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      cursor: pointer;
+      background: #2b6cb0;
+      color: white;
+    }
+    .receipt-choice-btn.secondary {
+      background: #e2e8f0;
+      color: #333;
+    }
+    .receipt-card {
+      background: white;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      cursor: pointer;
+    }
+    .receipt-card .receipt-card-store {
+      font-size: 1.05em;
+      font-weight: 600;
+    }
+    .receipt-card .receipt-card-meta {
+      color: #888;
+      font-size: 0.9em;
+      margin-top: 2px;
+    }
+    .receipt-card-detail {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+      font-size: 0.9em;
+    }
+    .receipt-card-detail .receipt-detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+    }
+    .receipt-remove-btn {
+      margin-top: 10px;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.08);
+      cursor: pointer;
+      font-size: 0.85em;
+    }
+    .price-history-row {
+      background: white;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.95em;
+    }
+    .price-history-row .price-history-price {
+      font-weight: 600;
+      color: #2b6cb0;
+    }
+
     /* --- Indstillinger --- */
     .correction-card {
       display: flex;
@@ -466,11 +556,12 @@
       <button class="menu-item active" data-view="list">🛒 Indkøbsliste</button>
       <button class="menu-item" data-view="stores">🏬 Butikker</button>
       <button class="menu-item" data-view="expiry">⏰ Over dato</button>
+      <button class="menu-item" data-view="receipts">🧾 Indscan bon</button>
       <button class="menu-item" data-view="diagnostics">🔧 Diagnostik</button>
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.22</div>
+      <div id="menu-version">v2.0.23</div>
     </div>
   </div>
 
@@ -517,6 +608,60 @@
         indkøbslisten, og vist med rødt her.
       </p>
       <div id="expiry-list">Henter...</div>
+    </div>
+
+    <!-- Visning: Indscan bon -->
+    <div id="view-receipts" class="view">
+      <h2>Scan en bon</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Tag et billede af kvitteringen. Billedet sendes til Claude for at
+        genkende butik, varer og priser, og kasseres bagefter - kun det
+        udledte resultat gemmes, og først når du har set og godkendt det
+        herunder.
+      </p>
+      <input type="file" id="receipt-camera-input" accept="image/*" capture="environment" style="display:none;">
+      <button id="receipt-scan-button" style="width:100%; padding:18px; margin-bottom:8px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.2em;">📷 Scan bon</button>
+      <button id="receipt-manual-button" style="width:100%; padding:12px; margin-bottom:8px; border:none; border-radius:8px; background:#e2e8f0; color:#333; cursor:pointer;">✏️ Indtast manuelt i stedet</button>
+      <div id="receipt-scan-status" style="text-align:center; color:#555; min-height:1.4em; margin-bottom:8px;"></div>
+      <div id="receipt-scan-choice" style="display:none; gap:8px; margin-bottom:12px;"></div>
+
+      <!-- Gennemsyn/redigering før gem - både efter en scanning og ved manuel indtastning -->
+      <div id="receipt-review-box" style="display:none; background:white; border-radius:10px; padding:16px; margin-bottom:24px; box-shadow:0 1px 2px rgba(0,0,0,0.1);">
+        <label style="display:block; margin-bottom:10px;">
+          Butik
+          <input type="text" id="receipt-store-input" style="width:100%; padding:10px; margin-top:4px; border-radius:8px; border:1px solid #ccc; font-size:1em; box-sizing:border-box;">
+        </label>
+        <label style="display:block; margin-bottom:12px;">
+          Dato
+          <input type="date" id="receipt-date-input" style="width:100%; padding:10px; margin-top:4px; border-radius:8px; border:1px solid #ccc; font-size:1em; box-sizing:border-box;">
+        </label>
+        <div id="receipt-items-editor" style="margin-bottom:8px;"></div>
+        <button id="receipt-add-item-row" style="width:100%; padding:8px; margin-bottom:12px; border:1px dashed #aaa; border-radius:8px; background:none; color:#555; cursor:pointer;">+ Tilføj varelinje</button>
+        <label style="display:block; margin-bottom:14px;">
+          Total (kr)
+          <input type="number" step="0.01" id="receipt-total-input" style="width:100%; padding:10px; margin-top:4px; border-radius:8px; border:1px solid #ccc; font-size:1em; box-sizing:border-box;">
+        </label>
+        <div style="display:flex; gap:8px;">
+          <button id="receipt-save-button" style="flex:1; padding:14px; border:none; border-radius:10px; background:#2f855a; color:white; cursor:pointer; font-size:1.05em;">✅ Gem</button>
+          <button id="receipt-cancel-button" style="flex:1; padding:14px; border:none; border-radius:10px; background:#e2e8f0; color:#333; cursor:pointer; font-size:1.05em;">Annullér</button>
+        </div>
+        <div id="receipt-save-feedback" style="text-align:center; color:#555; margin-top:8px;"></div>
+      </div>
+
+      <h2>Tidligere bonner</h2>
+      <button id="refresh-receipts-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer;">🔄 Opdater</button>
+      <div id="receipts-list" style="margin-bottom:28px;">Henter...</div>
+
+      <h2>Prishistorik</h2>
+      <p style="color:#666; font-size:0.9em;">
+        Søg på et varenavn for at se, hvad det har kostet over tid (matcher
+        delvist, så "mælk" også finder "Øko Mælk 1L").
+      </p>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="price-history-input" placeholder="Varenavn..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #ccc; font-size:1em;">
+        <button id="price-history-search-button" style="padding:10px 16px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer; white-space:nowrap;">Søg</button>
+      </div>
+      <div id="price-history-result"></div>
     </div>
 
     <!-- Visning: Diagnostik -->
@@ -644,6 +789,7 @@
       list: "Indkøbsliste",
       stores: "Butikker",
       expiry: "Over dato",
+      receipts: "Indscan bon",
       diagnostics: "Diagnostik",
       notifications: "Notifikationer",
       backup: "Backup",
@@ -716,6 +862,9 @@
       }
       if (viewName === "expiry") {
         loadExpiryItems();
+      }
+      if (viewName === "receipts") {
+        loadReceipts();
       }
       if (viewName === "settings") {
         loadVoiceCorrectionsView();
@@ -1771,6 +1920,325 @@
         expiryButton.disabled = false;
       }
     }
+
+    // --- Indscan bon ---
+    // Billedet forlader aldrig telefonens hukommelse, før det (evt. gen-)
+    // sendes til /receipts/scan - det gemmes ALDRIG på serveren. pendingReceiptBlob
+    // holdes klar til "Prøv igen", så en fejlet scanning ikke kræver et nyt billede.
+    const receiptCameraInput = document.getElementById("receipt-camera-input");
+    const receiptScanButton = document.getElementById("receipt-scan-button");
+    const receiptManualButton = document.getElementById("receipt-manual-button");
+    const receiptScanStatusEl = document.getElementById("receipt-scan-status");
+    const receiptScanChoiceEl = document.getElementById("receipt-scan-choice");
+    const receiptReviewBox = document.getElementById("receipt-review-box");
+    const receiptStoreInput = document.getElementById("receipt-store-input");
+    const receiptDateInput = document.getElementById("receipt-date-input");
+    const receiptItemsEditor = document.getElementById("receipt-items-editor");
+    const receiptTotalInput = document.getElementById("receipt-total-input");
+    const receiptSaveFeedbackEl = document.getElementById("receipt-save-feedback");
+
+    let pendingReceiptBlob = null;
+    let pendingReceiptRawModelOutput = null;
+
+    receiptScanButton.addEventListener("click", () => receiptCameraInput.click());
+
+    receiptCameraInput.addEventListener("change", async () => {
+      const file = receiptCameraInput.files[0];
+      receiptCameraInput.value = ""; // så samme fil kan vælges igen senere
+      if (!file) return;
+      pendingReceiptBlob = await compressReceiptImage(file);
+      await uploadReceiptScan();
+    });
+
+    receiptManualButton.addEventListener("click", () => {
+      pendingReceiptBlob = null;
+      pendingReceiptRawModelOutput = null;
+      openReceiptReview({ store_name: "", purchase_date: null, items: [], total: null });
+    });
+
+    // Skalerer billedet ned (maks 1600px på den lange led) og komprimerer som
+    // JPEG, før det sendes - hurtigere upload, billigere Claude-kald, og
+    // stadig rigeligt læseligt til en kassebon. Falder tilbage til
+    // originalfilen, hvis komprimeringen af en eller anden grund fejler.
+    function compressReceiptImage(file) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          const maxDim = 1600;
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(objectUrl);
+          canvas.toBlob(
+            (blob) => resolve(blob || file),
+            "image/jpeg",
+            0.85
+          );
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+        };
+        img.src = objectUrl;
+      });
+    }
+
+    function showReceiptChoice(message, choices) {
+      receiptScanStatusEl.textContent = message;
+      receiptScanChoiceEl.innerHTML = "";
+      receiptScanChoiceEl.style.display = "flex";
+      for (const choice of choices) {
+        const btn = document.createElement("button");
+        btn.textContent = choice.label;
+        btn.className = "receipt-choice-btn" + (choice.style ? ` ${choice.style}` : "");
+        btn.addEventListener("click", choice.onClick);
+        receiptScanChoiceEl.appendChild(btn);
+      }
+    }
+
+    function hideReceiptChoice() {
+      receiptScanChoiceEl.style.display = "none";
+      receiptScanChoiceEl.innerHTML = "";
+    }
+
+    async function uploadReceiptScan() {
+      hideReceiptChoice();
+      receiptScanStatusEl.textContent = "📤 Scanner bon...";
+      receiptScanButton.disabled = true;
+      receiptManualButton.disabled = true;
+
+      try {
+        const formData = new FormData();
+        formData.append("file", pendingReceiptBlob, "bon.jpg");
+        const response = await fetch(`${API_BASE}/receipts/scan`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const result = await response.json();
+
+        if (!result.success) {
+          receiptScanStatusEl.textContent = "";
+          showReceiptChoice(`Kunne ikke scanne bonnen: ${result.error}`, [
+            { label: "🔁 Prøv igen", onClick: () => uploadReceiptScan() },
+            { label: "✏️ Indtast manuelt i stedet", style: "secondary", onClick: () => {
+              hideReceiptChoice();
+              receiptScanStatusEl.textContent = "";
+              pendingReceiptRawModelOutput = null;
+              openReceiptReview({ store_name: "", purchase_date: null, items: [], total: null });
+            }},
+          ]);
+          return;
+        }
+
+        pendingReceiptRawModelOutput = result.raw_model_output || null;
+        receiptScanStatusEl.textContent = "";
+        openReceiptReview(result);
+      } catch (err) {
+        receiptScanStatusEl.textContent = "";
+        showReceiptChoice(`Kunne ikke kontakte serveren: ${err.message}`, [
+          { label: "🔁 Prøv igen", onClick: () => uploadReceiptScan() },
+          { label: "✏️ Indtast manuelt i stedet", style: "secondary", onClick: () => {
+            hideReceiptChoice();
+            receiptScanStatusEl.textContent = "";
+            pendingReceiptRawModelOutput = null;
+            openReceiptReview({ store_name: "", purchase_date: null, items: [], total: null });
+          }},
+        ]);
+      } finally {
+        receiptScanButton.disabled = false;
+        receiptManualButton.disabled = false;
+      }
+    }
+
+    function addReceiptItemRow(item) {
+      const row = document.createElement("div");
+      row.className = "receipt-item-row";
+      row.innerHTML = `
+        <input type="text" class="receipt-item-name" placeholder="Varenavn" value="${(item?.name || "").replace(/"/g, "&quot;")}">
+        <input type="number" step="0.01" class="receipt-item-price" placeholder="Pris" value="${item?.price ?? ""}">
+        <input type="number" step="0.01" class="receipt-item-qty" placeholder="Antal" value="${item?.quantity ?? 1}">
+        <button class="receipt-item-remove" title="Fjern linje">✕</button>
+      `;
+      row.querySelector(".receipt-item-remove").addEventListener("click", () => row.remove());
+      receiptItemsEditor.appendChild(row);
+    }
+
+    document.getElementById("receipt-add-item-row").addEventListener("click", () => {
+      addReceiptItemRow({ name: "", price: "", quantity: 1 });
+    });
+
+    function openReceiptReview(data) {
+      receiptStoreInput.value = data.store_name || "";
+      receiptDateInput.value = data.purchase_date || "";
+      receiptTotalInput.value = data.total ?? "";
+      receiptItemsEditor.innerHTML = "";
+      const items = data.items && data.items.length ? data.items : [{ name: "", price: "", quantity: 1 }];
+      for (const item of items) {
+        addReceiptItemRow(item);
+      }
+      receiptSaveFeedbackEl.textContent = "";
+      receiptReviewBox.style.display = "block";
+      receiptReviewBox.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function closeReceiptReview() {
+      receiptReviewBox.style.display = "none";
+      pendingReceiptBlob = null;
+      pendingReceiptRawModelOutput = null;
+    }
+
+    document.getElementById("receipt-cancel-button").addEventListener("click", closeReceiptReview);
+
+    document.getElementById("receipt-save-button").addEventListener("click", async () => {
+      const items = [];
+      for (const row of receiptItemsEditor.querySelectorAll(".receipt-item-row")) {
+        const name = row.querySelector(".receipt-item-name").value.trim();
+        const price = parseFloat(row.querySelector(".receipt-item-price").value);
+        const quantity = parseFloat(row.querySelector(".receipt-item-qty").value) || 1;
+        if (name && !isNaN(price)) {
+          items.push({ name, price, quantity });
+        }
+      }
+      const storeName = receiptStoreInput.value.trim();
+      if (!storeName) {
+        receiptSaveFeedbackEl.textContent = "Butiksnavn skal udfyldes.";
+        return;
+      }
+
+      receiptSaveFeedbackEl.textContent = "Gemmer...";
+      try {
+        const response = await fetch(`${API_BASE}/receipts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            store_name: storeName,
+            purchase_date: receiptDateInput.value || null,
+            total: receiptTotalInput.value ? parseFloat(receiptTotalInput.value) : null,
+            items: items,
+            raw_model_output: pendingReceiptRawModelOutput,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        closeReceiptReview();
+        loadReceipts();
+      } catch (err) {
+        receiptSaveFeedbackEl.textContent = `Fejl: ${err.message}`;
+      }
+    });
+
+    async function loadReceipts() {
+      const listEl = document.getElementById("receipts-list");
+      listEl.textContent = "Henter...";
+      try {
+        const response = await fetch(`${API_BASE}/receipts`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        listEl.innerHTML = "";
+        if (data.entries.length === 0) {
+          listEl.textContent = "Ingen bonner registreret endnu.";
+          return;
+        }
+        for (const entry of data.entries) {
+          const card = document.createElement("div");
+          card.className = "receipt-card";
+          const dateStr = entry.purchase_date
+            ? new Date(entry.purchase_date).toLocaleDateString("da-DK")
+            : new Date(entry.created_at).toLocaleDateString("da-DK");
+          card.innerHTML = `
+            <div class="receipt-card-store">${entry.store_name}</div>
+            <div class="receipt-card-meta">${dateStr} · ${entry.item_count} vare(r)${entry.total != null ? ` · ${entry.total.toFixed(2)} kr` : ""}</div>
+          `;
+          card.addEventListener("click", () => toggleReceiptDetail(card, entry.id));
+          listEl.appendChild(card);
+        }
+      } catch (err) {
+        listEl.textContent = `Fejl: kunne ikke hente bonner (${err.message})`;
+      }
+    }
+
+    async function toggleReceiptDetail(card, receiptId) {
+      const existing = card.querySelector(".receipt-card-detail");
+      if (existing) {
+        existing.remove();
+        return;
+      }
+      const detail = document.createElement("div");
+      detail.className = "receipt-card-detail";
+      detail.textContent = "Henter...";
+      card.appendChild(detail);
+
+      try {
+        const response = await fetch(`${API_BASE}/receipts/${receiptId}`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        detail.innerHTML = "";
+        for (const item of data.items) {
+          const row = document.createElement("div");
+          row.className = "receipt-detail-row";
+          row.innerHTML = `<span>${item.name}${item.quantity !== 1 ? ` (${item.quantity}x)` : ""}</span><span>${item.price.toFixed(2)} kr</span>`;
+          detail.appendChild(row);
+        }
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "receipt-remove-btn";
+        removeBtn.textContent = "Slet bon";
+        removeBtn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          await fetch(`${API_BASE}/receipts/${receiptId}`, { method: "DELETE" });
+          loadReceipts();
+        });
+        detail.appendChild(removeBtn);
+      } catch (err) {
+        detail.textContent = `Fejl: ${err.message}`;
+      }
+    }
+
+    document.getElementById("refresh-receipts-button").addEventListener("click", loadReceipts);
+
+    document.getElementById("price-history-search-button").addEventListener("click", async () => {
+      const input = document.getElementById("price-history-input");
+      const resultEl = document.getElementById("price-history-result");
+      const itemName = input.value.trim();
+      if (!itemName) return;
+
+      resultEl.textContent = "Søger...";
+      try {
+        const response = await fetch(`${API_BASE}/receipts/price-history/lookup?item_name=${encodeURIComponent(itemName)}`);
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        const data = await response.json();
+        resultEl.innerHTML = "";
+        if (data.entries.length === 0) {
+          resultEl.textContent = "Ingen tidligere køb fundet med det navn.";
+          return;
+        }
+        for (const entry of data.entries) {
+          const row = document.createElement("div");
+          row.className = "price-history-row";
+          const dateStr = new Date(entry.date).toLocaleDateString("da-DK");
+          row.innerHTML = `
+            <span>${dateStr} · ${entry.store_name} · ${entry.item_name}</span>
+            <span class="price-history-price">${entry.price.toFixed(2)} kr</span>
+          `;
+          resultEl.appendChild(row);
+        }
+      } catch (err) {
+        resultEl.textContent = `Fejl: ${err.message}`;
+      }
+    });
 
     // --- Indstillinger: Stemmerettelser ---
     // Cache af alle rettelser, brugt til at rette transskriberet tale FØR

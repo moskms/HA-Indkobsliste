@@ -119,4 +119,12 @@
    - Ny "⚙️ Indstillinger"-fane
    - Stemmerettelser: ord talegenkendelsen konsekvent hører forkert (fx "roastbeef" -> "roskilde") kan nu tilføjes som en rettelse, der anvendes automatisk på både indkøbslisten og Over dato
    - Ny daglig udløbsnotifikation: nyt endpoint /webhook/check-expiring-soon (til en ny HA-automation) advarer når varer på Over dato-listen udløber inden for et konfigurerbart antal dage, på et konfigurerbart klokkeslæt - styres fra Indstillinger-fanen
-   
+
+## 2.0.23
+   - Ny "🧾 Indscan bon"-fane: tag et billede af en kassebon, Claude (vision) genkender butik/dato/varer/priser og returnerer det som struktureret tekst - selve billedet gemmes ALDRIG, hverken permanent eller midlertidigt
+   - Gennemsyns-skærm før noget gemmes: ret butik/dato/varelinjer/total manuelt, uanset om de kom fra en scanning eller blev tastet fuldt manuelt (samme "godkend før gem"-princip som Over dato-flowet)
+   - Ved fejl (ingen forbindelse, ugyldig API-nøgle, Claude nede) beholdes billedet i telefonens hukommelse, så "Prøv igen" ikke kræver et nyt foto - eller vælg "Indtast manuelt i stedet"
+   - Nyt: arkiv over tidligere bonner (GET /receipts), og prishistorik-opslag pr. vare på tværs af alle bonner (GET /receipts/price-history/lookup)
+   - Ny add-on-option ANTHROPIC_API_KEY (Konfiguration-fanen i HA) - kræves for at scanningen virker, sættes aldrig i kode/git
+   - Billedet skaleres og komprimeres i browseren (maks 1600px, JPEG) før upload, for hurtigere upload og billigere Claude-kald
+

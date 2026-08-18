@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-11 | Version: 2.0.22
+# Sidst opdateret: 2026-08-18 | Version: 2.0.23
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -7,7 +7,7 @@ import os
 
 import requests
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, File, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
@@ -31,10 +31,14 @@ from app.models import (
     VoiceCorrectionCreate,
     ExpiryNotificationSettings,
     ExpiryNotificationSettingsUpdate,
+    Receipt,
+    ReceiptItem,
+    ReceiptCreate,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
 from app.danish_date import parse_danish_date
+from app.receipt_scan import extract_receipt, ReceiptScanError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
 
@@ -966,6 +970,178 @@ def check_expiring_soon(session: Session = Depends(get_session)):
         "items": [i.name for i in items],
         "message": message,
     }
+
+
+# ===== Indscan bon: scan en kassebon med kameraet, Claude udleder butik/
+# varer/pris. Selve billedet gemmes ALDRIG - hverken permanent eller
+# midlertidigt - kun det udledte resultat, og kun efter brugeren har set
+# og evt. rettet det (samme "gennemsyn før gem"-princip som stemmeflowet i
+# "Over dato"). Se app/receipt_scan.py for selve Claude-integrationen. =====
+
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+@app.post("/receipts/scan")
+async def scan_receipt(file: UploadFile = File(...)):
+    """
+    Tager imod et bon-billede, sender det til Claude, og returnerer det
+    UDLEDTE resultat - gemmer INTET i databasen her. Frontend viser
+    resultatet til gennemsyn/rettelse, og gemmer først via POST /receipts,
+    når brugeren aktivt godkender.
+
+    Svarer altid HTTP 200, med success/error i JSON-body i stedet for en
+    4xx/5xx-statuskode - samme mønster som /diagnostics/*-endpoints, og af
+    samme grund: Cloudflare Tunnel erstatter automatisk fejl-statuskoder med
+    sin egen generiske fejlside, hvilket ville skjule selve fejlbeskeden for
+    brugeren (og dermed umuliggøre "prøv igen" vs. "indtast manuelt"-valget,
+    som er selve pointen med denne fejlhåndtering).
+    """
+    if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        return {
+            "success": False,
+            "error": f"Filtypen '{file.content_type}' understøttes ikke - brug et almindeligt billedformat.",
+        }
+
+    image_bytes = await file.read()
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    try:
+        result = extract_receipt(image_bytes, file.content_type, api_key)
+    except ReceiptScanError as exc:
+        return {"success": False, "error": str(exc)}
+    except Exception as exc:  # uventet fejl - vis den stadig, i stedet for at fejle stille
+        logging.getLogger("indkobsliste.main").exception("Uventet fejl i scan_receipt")
+        return {"success": False, "error": f"Uventet fejl: {exc}"}
+
+    return {"success": True, **result}
+
+
+@app.post("/receipts", response_model=Receipt)
+def save_receipt(receipt_in: ReceiptCreate, session: Session = Depends(get_session)):
+    """Gemmer det ENDELIGE, godkendte resultat - uanset om det stammer fra en
+    Claude-scanning (evt. rettet af brugeren først) eller er tastet fuldt
+    manuelt (fx hvis scanningen fejlede). raw_model_output er kun sat i det
+    første tilfælde, til fejlsøgning."""
+    receipt = Receipt(
+        store_name=receipt_in.store_name.strip() or "Ukendt butik",
+        purchase_date=receipt_in.purchase_date,
+        total=receipt_in.total,
+        raw_model_output=receipt_in.raw_model_output,
+    )
+    session.add(receipt)
+    session.commit()
+    session.refresh(receipt)
+
+    for item_in in receipt_in.items:
+        name = item_in.name.strip()
+        if not name:
+            continue
+        session.add(ReceiptItem(
+            receipt_id=receipt.id,
+            name=name,
+            price=item_in.price,
+            quantity=item_in.quantity,
+        ))
+    session.commit()
+    session.refresh(receipt)
+    return receipt
+
+
+def _get_receipt_or_404(receipt_id: int, session: Session) -> Receipt:
+    receipt = session.get(Receipt, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Bon ikke fundet")
+    return receipt
+
+
+@app.get("/receipts")
+def list_receipts(limit: int = 100, session: Session = Depends(get_session)):
+    """Arkiv-liste, nyeste først. Kun sammendrag (uden varelinjer) - se
+    GET /receipts/{id} for detaljer om én bestemt bon."""
+    receipts = session.exec(
+        select(Receipt).order_by(Receipt.created_at.desc()).limit(limit)
+    ).all()
+    entries = []
+    for r in receipts:
+        item_count = len(
+            session.exec(select(ReceiptItem).where(ReceiptItem.receipt_id == r.id)).all()
+        )
+        entries.append({
+            "id": r.id,
+            "store_name": r.store_name,
+            "purchase_date": r.purchase_date.isoformat() if r.purchase_date else None,
+            "total": r.total,
+            "item_count": item_count,
+            "created_at": r.created_at.isoformat(),
+        })
+    return {"count": len(entries), "entries": entries}
+
+
+@app.get("/receipts/{receipt_id}")
+def get_receipt(receipt_id: int, session: Session = Depends(get_session)):
+    """Én bons fulde detaljer, inkl. alle varelinjer."""
+    receipt = _get_receipt_or_404(receipt_id, session)
+    items = session.exec(
+        select(ReceiptItem).where(ReceiptItem.receipt_id == receipt_id).order_by(ReceiptItem.id)
+    ).all()
+    return {
+        "id": receipt.id,
+        "store_name": receipt.store_name,
+        "purchase_date": receipt.purchase_date.isoformat() if receipt.purchase_date else None,
+        "total": receipt.total,
+        "created_at": receipt.created_at.isoformat(),
+        "items": [
+            {"id": i.id, "name": i.name, "price": i.price, "quantity": i.quantity}
+            for i in items
+        ],
+    }
+
+
+@app.delete("/receipts/{receipt_id}", status_code=204)
+def delete_receipt(receipt_id: int, session: Session = Depends(get_session)):
+    """Sletter en bon og alle dens varelinjer permanent."""
+    receipt = _get_receipt_or_404(receipt_id, session)
+    items = session.exec(select(ReceiptItem).where(ReceiptItem.receipt_id == receipt_id)).all()
+    for item in items:
+        session.delete(item)
+    session.delete(receipt)
+    session.commit()
+
+
+@app.get("/receipts/price-history/lookup")
+def receipt_price_history(item_name: str, session: Session = Depends(get_session)):
+    """
+    Prisudvikling for én vare over tid, på tværs af alle scannede/indtastede
+    bonner - til at se om en vare er blevet dyrere, eller sammenligne butikker.
+
+    Matcher ustrengt (case-insensitive, delvis substreng), da samme vare
+    sjældent hedder præcis det samme fra bon til bon (fx "Øko Mælk 1L" vs.
+    "Mælk øko 1l"). Sorteret ældst-til-nyest, så frontend kan tegne den
+    direkte som en tidslinje.
+    """
+    needle = item_name.strip().lower()
+    if not needle:
+        return {"item_name": item_name, "count": 0, "entries": []}
+
+    all_items = session.exec(select(ReceiptItem)).all()
+    matches = [i for i in all_items if needle in i.name.lower()]
+
+    entries = []
+    for match in matches:
+        receipt = session.get(Receipt, match.receipt_id)
+        if receipt is None:
+            continue
+        entries.append({
+            "receipt_id": receipt.id,
+            "date": (receipt.purchase_date or receipt.created_at.date()).isoformat(),
+            "store_name": receipt.store_name,
+            "item_name": match.name,
+            "price": match.price,
+            "quantity": match.quantity,
+        })
+
+    entries.sort(key=lambda e: e["date"])
+    return {"item_name": item_name, "count": len(entries), "entries": entries}
 
 
 # Serverer den simple frontend-side. Tilgås via /app/index.html
