@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-08-12 -->
+<!-- Sidst opdateret: 2026-08-18 -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -29,7 +29,17 @@ udløbspåmindelse.
   popup-flow: sig varens navn → indtal dato → godkend eller prøv igen. Dansk
   datofortolkning forstår både ordenstal ("tolvte") og grundtal ("tolv"),
   månedsnavne og numeriske formater. Overskredne varer lægges automatisk
-  tilbage på selve indkøbslisten
+  tilbage på selve indkøbslisten. Hvert kort har også en "🛒 Fjern + køb
+  igen"-knap, til når du har brugt det sidste af noget og skal have mere
+- **Indscan bon** – tag et billede af en kassebon med telefonens kamera, og
+  Claude (vision) udleder butik, dato, varer og priser som struktureret
+  tekst – **billedet gemmes aldrig**, hverken permanent eller midlertidigt.
+  Du ser altid resultatet til gennemsyn/rettelse, før noget gemmes (samme
+  "godkend før gem"-princip som Over dato). Rummer også et arkiv over
+  tidligere bonner, og et prishistorik-opslag pr. vare på tværs af alle
+  bonner. Kræver en Anthropic API-nøgle – se
+  ["Indscan bon: Anthropic API-nøgle"](#indscan-bon-anthropic-api-nøgle)
+  nedenfor
 - **Indstillinger** – stemmerettelser (ord talegenkendelsen konsekvent hører
   forkert, fx "roastbeef" hørt som "roskilde", rettes automatisk før det
   vises/gemmes), og en konfigurerbar daglig notifikation for varer der snart
@@ -44,16 +54,17 @@ udløbspåmindelse.
 | Del | Teknologi |
 |---|---|
 | Backend | FastAPI + SQLite (SQLModel) |
-| Frontend | Én statisk HTML/JS-fil, tabs til Indkøbsliste/Butikker/Over dato/Diagnostik/Notifikationer/Backup/Indstillinger |
+| Frontend | Én statisk HTML/JS-fil, tabs til Indkøbsliste/Butikker/Over dato/Indscan bon/Diagnostik/Notifikationer/Backup/Indstillinger |
 | Hosting | Home Assistant add-on, installeret via dette GitHub-repo |
 | Ekstern adgang | Cloudflare Tunnel |
+| Bon-genkendelse | Claude (Anthropic API, vision) – kun til Indscan bon |
 
 Filstruktur i korte træk:
 
 ```
 repository.yaml        ← gør repoet installerbart som add-on repo i HA
 indkobsliste/
-  config.yaml          ← add-on-metadata og version
+  config.yaml          ← add-on-metadata, version og ANTHROPIC_API_KEY-option
   app/
     main.py            ← FastAPI-endpoints
     models.py          ← databasemodeller (SQLModel)
@@ -61,6 +72,7 @@ indkobsliste/
     overpass.py         ← butiksopslag via OpenStreetMap Overpass
     nominatim.py         ← fallback-opslag + afstandsberegning
     danish_date.py       ← fortolker talte/skrevne danske datoer til rigtige datoer
+    receipt_scan.py      ← sender bon-billeder til Claude, udleder struktureret data
   frontend/
     index.html          ← hele frontenden
 ```
@@ -173,6 +185,21 @@ faktisk sender noget, endpointet sørger selv for kun én besked pr. dag:
 4. Åbn appens URL (Cloudflare Tunnel-adressen, eller din lokale HA-adresse +
    `/app`) i telefonens browser, og læg den evt. som genvej på hjemmeskærmen
 
+### Indscan bon: Anthropic API-nøgle
+
+"Indscan bon" kræver en Anthropic API-nøgle (fra [console.anthropic.com](https://console.anthropic.com))
+for at kunne genkende bonner. Uden en nøgle viser fanen bare en tydelig fejl –
+resten af appen fungerer upåvirket.
+
+1. Opret/hent din nøgle på console.anthropic.com
+2. I Home Assistant: **Settings → Add-ons → Indkøbsliste → Configuration**
+   (ikke Info-fanen) → indtast nøglen i feltet **"Anthropic api key"** → Save
+3. Genstart add-on'et (Info-fanen → Stop → Start), så den nye konfiguration
+   bliver læst ind
+
+Nøglen sættes udelukkende her – den står aldrig i kildekoden eller committes
+til git.
+
 ---
 
 ## Status – hvad er opnået
@@ -191,6 +218,10 @@ faktisk sender noget, endpointet sørger selv for kun én besked pr. dag:
 - [x] Notifikationslog til at spore falske positiver bagudrettet
 - [x] Cloudflare Tunnel-deployment til ekstern adgang
 - [x] Automatisk SQLite-migration ved nye modelfelter (ingen manuel migration nødvendig)
+- [x] Indscan bon: kamera-scanning af kassebonner via Claude (vision), med
+      gennemsyn/rettelse før gem – billedet gemmes aldrig
+- [x] Arkiv over tidligere bonner, og prishistorik-opslag pr. vare
+- [x] "Fjern + køb igen"-knap på Over dato-kort
 
 ## Status – hvad mangler
 
@@ -221,6 +252,24 @@ faktisk sender noget, endpointet sørger selv for kun én besked pr. dag:
 - Home Assistant 2024.8/2024.10 omdøbte automation-nøgler (`service:` →
   `action:`, `platform:` → `trigger:`) – gammel syntaks virker stadig, men
   VS Code-extensionen flager den som forældet
+- **Filer under `!include_dir_merge_list` SKAL starte med `- ` foran den
+  første nøgle** (fx `- id:` eller `- alias:`), ellers bliver hele filen
+  stille ignoreret af Home Assistant – **uden nogen fejl i loggen**. Bekræftet
+  reelt tilfælde: en udløbs-automation uden `- ` foran fandtes bare aldrig,
+  og der stod intet om det nogen steder
+- Automationer skal have et `id:`-felt for at kunne bruges med
+  **Traces**-fanen (Settings → Automations → automationen → Traces) – uden
+  det får du blot en fejl om at tilføje et ID, selvom automationen kører fint
+- En forsøgt in-app kameravisning (browserens `getUserMedia`, med egen
+  lys/torch-knap) til Indscan bon gav i praksis markant dårligere, uskarpe
+  billeder end telefonens egen kamera-app (ingen autofokus/stabilisering) –
+  rullet tilbage igen. Telefonens egen kamera-app har allerede sin egen
+  lys/blitz-knap indbygget, ingen kode nødvendig for det
+- Termisk kvitteringspapir falmer fysisk over tid – ældre, falmede bonner kan
+  give Claude fejlagtige aflæsninger, især af små cifre som datoen (bekræftet:
+  en ældre bon læst forkert, en frisk-printet bon læst 100% korrekt). Det er
+  derfor gennemsyns-/rettelses-skærmen i Indscan bon er et krævet trin, ikke
+  bare et ekstra klik
 
 ## Licens
 
