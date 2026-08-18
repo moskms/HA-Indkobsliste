@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-18 | Version: 2.0.25 -->
+<!-- Sidst opdateret: 2026-08-18 | Version: 2.0.26 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -236,8 +236,12 @@
     .expiry-card:not(.expired) .expiry-date {
       color: #888;
     }
-    .expiry-remove-btn {
+    .expiry-actions {
+      display: flex;
+      gap: 8px;
       margin-top: 8px;
+    }
+    .expiry-remove-btn, .expiry-rebuy-btn {
       padding: 6px 12px;
       border: none;
       border-radius: 6px;
@@ -246,8 +250,16 @@
       cursor: pointer;
       font-size: 0.85em;
     }
+    .expiry-rebuy-btn {
+      background: #2b6cb0;
+      color: white;
+    }
     .expiry-card.expired .expiry-remove-btn {
       background: rgba(255,255,255,0.25);
+    }
+    .expiry-card.expired .expiry-rebuy-btn {
+      background: white;
+      color: #c53030;
     }
     .suggestion-btn {
       display: block;
@@ -561,7 +573,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.25</div>
+      <div id="menu-version">v2.0.26</div>
     </div>
   </div>
 
@@ -1725,9 +1737,24 @@
           card.innerHTML = `
             <div class="expiry-name">${item.name}</div>
             <div class="expiry-date">${item.is_expired ? "Over dato: " : "Holdbar til: "}${dateStr}</div>
-            <button class="expiry-remove-btn">Fjern</button>
+            <div class="expiry-actions">
+              <button class="expiry-remove-btn">Fjern</button>
+              <button class="expiry-rebuy-btn">🛒 Fjern + køb igen</button>
+            </div>
           `;
           card.querySelector(".expiry-remove-btn").addEventListener("click", async () => {
+            await fetch(`${API_BASE}/expiry-items/${item.id}`, { method: "DELETE" });
+            loadExpiryItems();
+          });
+          // Tilføjer varen til selve indkøbslisten FØR den fjernes herfra - hvis
+          // tilføjelsen skulle fejle (netværk mv.), bliver varen stående her i
+          // stedet for at forsvinde sporløst uden at komme på listen.
+          card.querySelector(".expiry-rebuy-btn").addEventListener("click", async () => {
+            await fetch(`${API_BASE}/items`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: item.name }),
+            });
             await fetch(`${API_BASE}/expiry-items/${item.id}`, { method: "DELETE" });
             loadExpiryItems();
           });

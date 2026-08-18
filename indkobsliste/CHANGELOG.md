@@ -136,3 +136,6 @@
    - Rullet 2.0.24 tilbage igen: den in-app kameravisning gav markant dårligere, uskarpe billeder (ingen autofokus/billedstabilisering) sammenlignet med telefonens egen kamera-app, og scanninger blev derfor upålidelige (for mange/forkerte varelinjer)
    - "Scan bon" åbner igen telefonens egen kamera-app direkte - den har i forvejen sin egen lys/blitz-knap indbygget, ingen kode nødvendig for det
 
+## 2.0.26
+   - Ny knap "🛒 Fjern + køb igen" på hvert Over dato-kort, ved siden af "Fjern" - tilføjer varen til selve indkøbslisten OG fjerner den fra Over dato i samme handling, til når man har brugt det sidste af noget og skal have mere
+
