@@ -1,5 +1,5 @@
 name: "Indkøbsliste"
-version: "2.0.24"
+version: "2.0.25"
 slug: "indkobsliste"
 description: "Indkøbsliste med stemmeinput og automatisk butiksopslag"
 arch:

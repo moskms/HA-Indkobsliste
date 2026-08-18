@@ -132,3 +132,7 @@
    - "Scan bon" åbner nu en in-app kameravisning (i stedet for telefonens egen kamera-app) med en lys/torch-knap - nyttigt til ældre, falmede termopapir-bonner, hvor Claude ellers kan fejlaflæse små, udviskede cifre (bekræftet: dato blev læst forkert på en ældre bon, men helt korrekt på en frisk-printet bon)
    - Falder automatisk tilbage til telefonens egen kamera-app, hvis in-app kameraet/lyset ikke understøttes (fx iOS Safari)
 
+## 2.0.25
+   - Rullet 2.0.24 tilbage igen: den in-app kameravisning gav markant dårligere, uskarpe billeder (ingen autofokus/billedstabilisering) sammenlignet med telefonens egen kamera-app, og scanninger blev derfor upålidelige (for mange/forkerte varelinjer)
+   - "Scan bon" åbner igen telefonens egen kamera-app direkte - den har i forvejen sin egen lys/blitz-knap indbygget, ingen kode nødvendig for det
+

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-18 | Version: 2.0.24 -->
+<!-- Sidst opdateret: 2026-08-18 | Version: 2.0.25 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -404,51 +404,6 @@
       color: #333;
     }
 
-    /* --- Indscan bon: in-app kameravisning --- */
-    #receipt-camera-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: black;
-      z-index: 40;
-      flex-direction: column;
-    }
-    #receipt-camera-overlay.open {
-      display: flex;
-    }
-    #receipt-camera-video {
-      flex: 1;
-      width: 100%;
-      min-height: 0;
-      object-fit: cover;
-      background: black;
-    }
-    #receipt-camera-controls {
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      padding: 18px;
-      background: rgba(0,0,0,0.85);
-    }
-    .camera-control-btn {
-      padding: 14px 18px;
-      border: none;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.15);
-      color: white;
-      font-size: 1.3em;
-      cursor: pointer;
-    }
-    #receipt-capture-button {
-      padding: 20px;
-      background: white;
-      color: black;
-      font-size: 1.6em;
-    }
-    #receipt-torch-button.active {
-      background: #f0ad4e;
-    }
-
     /* --- Indscan bon --- */
     .receipt-item-row {
       display: flex;
@@ -606,7 +561,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.24</div>
+      <div id="menu-version">v2.0.25</div>
     </div>
   </div>
 
@@ -617,21 +572,6 @@
       <div id="expiry-modal-buttons"></div>
     </div>
   </div>
-
-  <!-- In-app kameravisning til Indscan bon, med lys/torch-knap - kun pålideligt
-       understøttet på Android Chrome med bagkamera (getUserMedia + torch-
-       constraint). Falder automatisk tilbage til telefonens egen kamera-app
-       (via receipt-camera-input), hvis getUserMedia slet ikke er tilgængeligt,
-       fx på iOS Safari eller en ældre browser. -->
-  <div id="receipt-camera-overlay">
-    <video id="receipt-camera-video" autoplay playsinline muted></video>
-    <div id="receipt-camera-controls">
-      <button id="receipt-torch-button" class="camera-control-btn" style="display:none;" title="Lys til/fra">🔦</button>
-      <button id="receipt-capture-button" class="camera-control-btn" title="Tag billede">📸</button>
-      <button id="receipt-camera-cancel-button" class="camera-control-btn" title="Annullér">✕</button>
-    </div>
-  </div>
-  <canvas id="receipt-camera-canvas" style="display:none;"></canvas>
 
   <main>
     <!-- Visning: Indkøbsliste -->
@@ -2000,102 +1940,16 @@
     let pendingReceiptBlob = null;
     let pendingReceiptRawModelOutput = null;
 
-    // --- In-app kameravisning med lys/torch-knap ---
-    const receiptCameraOverlay = document.getElementById("receipt-camera-overlay");
-    const receiptCameraVideo = document.getElementById("receipt-camera-video");
-    const receiptTorchButton = document.getElementById("receipt-torch-button");
-    const receiptCaptureButton = document.getElementById("receipt-capture-button");
-    const receiptCameraCancelButton = document.getElementById("receipt-camera-cancel-button");
-    const receiptCameraCanvas = document.getElementById("receipt-camera-canvas");
+    // Åbner telefonens egen kamera-app direkte (via input[type=file][capture]).
+    // Havde tidligere (v2.0.24) et forsøg på en in-app kameravisning med egen
+    // lys/torch-knap, for at hjælpe med falmede termopapir-bonner - men den gav
+    // markant dårligere billeder (ingen autofokus/billedstabilisering, som
+    // telefonens egen kamera-app har indbygget), og blev rullet tilbage igen
+    // (v2.0.25). Telefonens egen kamera-app har i forvejen sin egen
+    // lys/blitz-knap, som brugeren selv kan trykke på ved behov - ingen
+    // kode nødvendig for det.
+    receiptScanButton.addEventListener("click", () => receiptCameraInput.click());
 
-    let receiptCameraStream = null;
-    let receiptCameraTrack = null;
-    let receiptTorchOn = false;
-
-    receiptScanButton.addEventListener("click", openReceiptCamera);
-
-    // Åbner en in-app kameravisning (getUserMedia) i stedet for telefonens
-    // egen kamera-app, SPECIFIKT for at kunne styre lyset (torch) direkte fra
-    // scanningsfeltet - relevant for gamle, falmede termopapir-bonner, hvor
-    // Claude ellers kan fejllæse små, udviskede cifre (bekræftet: dato blev
-    // fejlaflæst på ældre bonner, men læst korrekt på en frisk-printet bon).
-    // getUserMedia/torch er ikke understøttet overalt (bl.a. ikke iOS Safari)
-    // - falder derfor automatisk tilbage til den gamle fil-input-metode
-    // (telefonens egen kamera-app), hvis noget fejler undervejs.
-    async function openReceiptCamera() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        receiptCameraInput.click();
-        return;
-      }
-      try {
-        receiptCameraStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
-      } catch (err) {
-        console.error("Kunne ikke åbne kameraet direkte, falder tilbage til kamera-appen:", err.message);
-        receiptCameraInput.click();
-        return;
-      }
-
-      receiptCameraTrack = receiptCameraStream.getVideoTracks()[0];
-      receiptCameraVideo.srcObject = receiptCameraStream;
-      receiptCameraOverlay.classList.add("open");
-
-      // Lys-knappen vises kun hvis enheden/browseren rent faktisk melder
-      // torch-understøttelse - viser den aldrig som en knap der alligevel
-      // ikke gør noget.
-      const capabilities = receiptCameraTrack.getCapabilities ? receiptCameraTrack.getCapabilities() : {};
-      receiptTorchOn = false;
-      receiptTorchButton.classList.remove("active");
-      receiptTorchButton.style.display = capabilities.torch ? "block" : "none";
-    }
-
-    function closeReceiptCamera() {
-      if (receiptCameraStream) {
-        receiptCameraStream.getTracks().forEach((track) => track.stop());
-      }
-      receiptCameraStream = null;
-      receiptCameraTrack = null;
-      receiptCameraOverlay.classList.remove("open");
-    }
-
-    receiptCameraCancelButton.addEventListener("click", closeReceiptCamera);
-
-    receiptTorchButton.addEventListener("click", async () => {
-      if (!receiptCameraTrack) return;
-      const wantOn = !receiptTorchOn;
-      try {
-        await receiptCameraTrack.applyConstraints({ advanced: [{ torch: wantOn }] });
-        receiptTorchOn = wantOn;
-        receiptTorchButton.classList.toggle("active", receiptTorchOn);
-      } catch (err) {
-        console.error("Kunne ikke slå lys til/fra:", err.message);
-      }
-    });
-
-    receiptCaptureButton.addEventListener("click", () => {
-      const video = receiptCameraVideo;
-      const maxDim = 1600; // samme skalering som compressReceiptImage() bruger for fallback-stien
-      const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
-      receiptCameraCanvas.width = Math.round(video.videoWidth * scale);
-      receiptCameraCanvas.height = Math.round(video.videoHeight * scale);
-      const ctx = receiptCameraCanvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, receiptCameraCanvas.width, receiptCameraCanvas.height);
-
-      receiptCameraCanvas.toBlob(
-        async (blob) => {
-          closeReceiptCamera();
-          pendingReceiptBlob = blob;
-          await uploadReceiptScan();
-        },
-        "image/jpeg",
-        0.85
-      );
-    });
-
-    // Fallback-sti: telefonens egen kamera-app (bruges kun hvis in-app
-    // kameraet ovenfor ikke kunne åbnes/understøttes).
     receiptCameraInput.addEventListener("change", async () => {
       const file = receiptCameraInput.files[0];
       receiptCameraInput.value = ""; // så samme fil kan vælges igen senere
