@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-08-18 -->
+<!-- Sidst opdateret: 2026-08-20 -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -46,8 +46,8 @@ udløbspåmindelse.
   går over dato (antal dage før + klokkeslæt)
 - **Diagnostik** – se de seneste positionstjek og udløste notifikationer
   direkte i appen, uden at skulle grave i Home Assistants egne logs
-- **Backup/gendan** – download og upload en JSON-backup af alle butikker og
-  varer, fx før en versionsopgradering
+- **Backup/gendan** – download og upload en JSON-backup af alle butikker,
+  varer og bonner (fra Indscan bon), fx før en versionsopgradering
 
 ## Arkitektur
 

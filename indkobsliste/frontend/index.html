@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-18 | Version: 2.0.26 -->
+<!-- Sidst opdateret: 2026-08-20 | Version: 2.0.27 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -573,7 +573,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.26</div>
+      <div id="menu-version">v2.0.27</div>
     </div>
   </div>
 
@@ -727,16 +727,17 @@
     <div id="view-backup" class="view">
       <h2>Tag en sikkerhedskopi</h2>
       <p style="color:#666; font-size:0.9em;">
-        Download alle dine butikker og varer som en fil. Gør dette FØR
-        versionsopgraderinger eller andre ændringer i Home Assistant, så du
-        altid kan gendanne, hvis noget skulle gå tabt.
+        Download alle dine butikker, varer og bonner (fra Indscan bon) som
+        en fil. Gør dette FØR versionsopgraderinger eller andre ændringer i
+        Home Assistant, så du altid kan gendanne, hvis noget skulle gå tabt.
       </p>
       <button id="download-backup-button" style="width:100%; padding:14px; margin-bottom:24px; border:none; border-radius:10px; background:#2f855a; color:white; cursor:pointer; font-size:1.05em;">⬇️ Download backup</button>
 
       <h2>Gendan fra en backup-fil</h2>
       <p style="color:#666; font-size:0.9em;">
-        Tilføjer butikker/varer fra en tidligere hentet backup-fil. Sletter
-        ikke eksisterende data - sikkert at bruge selvom listen ikke er tom.
+        Tilføjer butikker/varer/bonner fra en tidligere hentet backup-fil.
+        Sletter ikke eksisterende data - sikkert at bruge selvom listen ikke
+        er tom.
       </p>
       <input type="file" id="restore-file-input" accept="application/json" style="width:100%; margin-bottom:12px;">
       <button id="restore-backup-button" style="width:100%; padding:14px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.05em;">⬆️ Gendan fra fil</button>
@@ -1682,7 +1683,7 @@
         a.download = `indkobsliste-backup-${dateStr}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        backupFeedbackEl.textContent = `Backup downloadet: ${data.stores.length} butik(ker), ${data.items.length} vare(r) ✓`;
+        backupFeedbackEl.textContent = `Backup downloadet: ${data.stores.length} butik(ker), ${data.items.length} vare(r), ${data.receipts.length} bon(ner) ✓`;
       } catch (err) {
         backupFeedbackEl.textContent = `Fejl ved download: ${err.message}`;
       }
@@ -1706,7 +1707,7 @@
           throw new Error(`Server svarede med status ${response.status}`);
         }
         const result = await response.json();
-        backupFeedbackEl.textContent = `Gendannet: ${result.stores_restored} butik(ker), ${result.items_restored} vare(r) ✓`;
+        backupFeedbackEl.textContent = `Gendannet: ${result.stores_restored} butik(ker), ${result.items_restored} vare(r), ${result.receipts_restored} bon(ner) (${result.receipt_items_restored} varelinjer) ✓`;
       } catch (err) {
         backupFeedbackEl.textContent = `Fejl ved gendannelse: ${err.message}`;
       }

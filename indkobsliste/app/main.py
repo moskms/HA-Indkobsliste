@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-18 | Version: 2.0.23
+# Sidst opdateret: 2026-08-20 | Version: 2.0.27
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -687,9 +687,30 @@ def store_distance_log(limit: int = 100, session: Session = Depends(get_session)
 
 @app.get("/backup")
 def create_backup(session: Session = Depends(get_session)):
-    """Eksporterer alle butikker og varer som JSON."""
+    """Eksporterer alle butikker, varer og bonner (Indscan bon) som JSON.
+    Bonner eksporteres med deres varelinjer nestet under hver bon, da
+    ReceiptItem.receipt_id peger på et database-genereret id, som IKKE er
+    stabilt på tværs af en gendannelse (se restore_backup)."""
     stores = session.exec(select(Store)).all()
     items = session.exec(select(Item)).all()
+    receipts = session.exec(select(Receipt).order_by(Receipt.created_at)).all()
+
+    receipts_export = []
+    for r in receipts:
+        receipt_items = session.exec(
+            select(ReceiptItem).where(ReceiptItem.receipt_id == r.id).order_by(ReceiptItem.id)
+        ).all()
+        receipts_export.append({
+            "store_name": r.store_name,
+            "purchase_date": r.purchase_date.isoformat() if r.purchase_date else None,
+            "total": r.total,
+            "created_at": r.created_at.isoformat(),
+            "raw_model_output": r.raw_model_output,
+            "items": [
+                {"name": ri.name, "price": ri.price, "quantity": ri.quantity}
+                for ri in receipt_items
+            ],
+        })
 
     return {
         "backup_created_at": datetime.utcnow().isoformat(),
@@ -707,14 +728,18 @@ def create_backup(session: Session = Depends(get_session)):
             {"name": i.name, "done": i.done}
             for i in items
         ],
+        "receipts": receipts_export,
     }
 
 
 @app.post("/restore")
 def restore_backup(backup: dict, session: Session = Depends(get_session)):
-    """Gendanner butikker og varer fra en JSON-backup (fra /backup)."""
+    """Gendanner butikker, varer og bonner (Indscan bon) fra en JSON-backup
+    (fra /backup). Tilføjer - sletter ikke eksisterende data."""
     stores_added = 0
     items_added = 0
+    receipts_added = 0
+    receipt_items_added = 0
 
     for store_data in backup.get("stores", []):
         store = Store(
@@ -732,12 +757,47 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
         session.add(item)
         items_added += 1
 
+    for receipt_data in backup.get("receipts", []):
+        purchase_date_str = receipt_data.get("purchase_date")
+        receipt = Receipt(
+            store_name=receipt_data.get("store_name") or "Ukendt butik",
+            purchase_date=date.fromisoformat(purchase_date_str) if purchase_date_str else None,
+            total=receipt_data.get("total"),
+            raw_model_output=receipt_data.get("raw_model_output"),
+        )
+        created_at_str = receipt_data.get("created_at")
+        if created_at_str:
+            try:
+                receipt.created_at = datetime.fromisoformat(created_at_str)
+            except ValueError:
+                pass  # behold default (nu), i stedet for at fejle hele gendannelsen
+        session.add(receipt)
+        # flush (ikke commit) tildeler receipt.id med det samme, uden at
+        # afslutte transaktionen - så ReceiptItem kan sætte sin foreign key,
+        # og hele gendannelsen forbliver én atomisk handling
+        session.flush()
+        receipts_added += 1
+
+        for item_in in receipt_data.get("items", []):
+            name = (item_in.get("name") or "").strip()
+            if not name:
+                continue
+            session.add(ReceiptItem(
+                receipt_id=receipt.id,
+                name=name,
+                price=item_in.get("price", 0),
+                quantity=item_in.get("quantity", 1),
+            ))
+            receipt_items_added += 1
+
     session.commit()
 
     return {
         "success": True,
         "stores_restored": stores_added,
         "items_restored": items_added,
+        "receipts_restored": receipts_added,
+        "receipt_items_restored": receipt_items_added,
     }
 
 

@@ -139,3 +139,7 @@
 ## 2.0.26
    - Ny knap "🛒 Fjern + køb igen" på hvert Over dato-kort, ved siden af "Fjern" - tilføjer varen til selve indkøbslisten OG fjerner den fra Over dato i samme handling, til når man har brugt det sidste af noget og skal have mere
 
+## 2.0.27
+   - Backup/gendan omfatter nu også Indscan bon: bonner og deres varelinjer (navn, pris, mængde, dato, total) tages med i /backup, og gendannes korrekt via /restore - testet med fuld roundtrip (opret bon -> backup -> gendan i tom database -> bekræft data matcher)
+   - Backup- og gendan-knapperne i appen viser nu også antal bonner (og varelinjer ved gendannelse)
+
