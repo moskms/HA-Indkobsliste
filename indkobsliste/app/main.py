@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-20 | Version: 2.0.27
+# Sidst opdateret: 2026-08-20 | Version: 2.0.29
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -735,34 +735,86 @@ def create_backup(session: Session = Depends(get_session)):
 @app.post("/restore")
 def restore_backup(backup: dict, session: Session = Depends(get_session)):
     """Gendanner butikker, varer og bonner (Indscan bon) fra en JSON-backup
-    (fra /backup). Tilføjer - sletter ikke eksisterende data."""
+    (fra /backup). Tilføjer - sletter ikke eksisterende data.
+
+    IDEMPOTENT: springer over alt der allerede findes, så det er sikkert at
+    gendanne samme backup-fil flere gange i træk (fx efter en fejl, eller
+    ved en forglemmelse) uden at ende med de samme butikker/varer/bonner
+    gentaget for hver gendannelse. Dublet-tjek er "godt nok" (navn/felter),
+    ikke kryptografisk - se de enkelte nøgler nedenfor."""
     stores_added = 0
+    stores_skipped = 0
     items_added = 0
+    items_skipped = 0
     receipts_added = 0
+    receipts_skipped = 0
     receipt_items_added = 0
 
+    # --- Butikker: dublet hvis samme osm_id, ELLER samme navn (case-insensitivt) ---
+    existing_stores = session.exec(select(Store)).all()
+    known_store_names = {s.name.strip().lower() for s in existing_stores}
+    known_store_osm_ids = {s.osm_id for s in existing_stores if s.osm_id}
+
     for store_data in backup.get("stores", []):
+        name = store_data["name"]
+        osm_id = store_data.get("osm_id")
+        is_duplicate = (
+            (osm_id and osm_id in known_store_osm_ids)
+            or name.strip().lower() in known_store_names
+        )
+        if is_duplicate:
+            stores_skipped += 1
+            continue
         store = Store(
-            name=store_data["name"],
+            name=name,
             latitude=store_data["latitude"],
             longitude=store_data["longitude"],
             radius_m=store_data.get("radius_m", 50),
-            osm_id=store_data.get("osm_id"),
+            osm_id=osm_id,
         )
         session.add(store)
+        known_store_names.add(name.strip().lower())
+        if osm_id:
+            known_store_osm_ids.add(osm_id)
         stores_added += 1
 
+    # --- Varer: dublet hvis samme navn (case-insensitivt) OG samme afkrydsningsstatus ---
+    existing_items = session.exec(select(Item)).all()
+    known_item_keys = {(i.name.strip().lower(), i.done) for i in existing_items}
+
     for item_data in backup.get("items", []):
-        item = Item(name=item_data["name"], done=item_data.get("done", False))
+        name = item_data["name"]
+        done = item_data.get("done", False)
+        key = (name.strip().lower(), done)
+        if key in known_item_keys:
+            items_skipped += 1
+            continue
+        item = Item(name=name, done=done)
         session.add(item)
+        known_item_keys.add(key)
         items_added += 1
 
+    # --- Bonner: dublet hvis samme butiksnavn + købsdato + total ---
+    existing_receipts = session.exec(select(Receipt)).all()
+    known_receipt_keys = {
+        (r.store_name.strip().lower(), r.purchase_date, r.total)
+        for r in existing_receipts
+    }
+
     for receipt_data in backup.get("receipts", []):
+        store_name = receipt_data.get("store_name") or "Ukendt butik"
         purchase_date_str = receipt_data.get("purchase_date")
+        purchase_date = date.fromisoformat(purchase_date_str) if purchase_date_str else None
+        total = receipt_data.get("total")
+        key = (store_name.strip().lower(), purchase_date, total)
+        if key in known_receipt_keys:
+            receipts_skipped += 1
+            continue
+
         receipt = Receipt(
-            store_name=receipt_data.get("store_name") or "Ukendt butik",
-            purchase_date=date.fromisoformat(purchase_date_str) if purchase_date_str else None,
-            total=receipt_data.get("total"),
+            store_name=store_name,
+            purchase_date=purchase_date,
+            total=total,
             raw_model_output=receipt_data.get("raw_model_output"),
         )
         created_at_str = receipt_data.get("created_at")
@@ -776,6 +828,7 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
         # afslutte transaktionen - så ReceiptItem kan sætte sin foreign key,
         # og hele gendannelsen forbliver én atomisk handling
         session.flush()
+        known_receipt_keys.add(key)
         receipts_added += 1
 
         for item_in in receipt_data.get("items", []):
@@ -795,8 +848,11 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
     return {
         "success": True,
         "stores_restored": stores_added,
+        "stores_skipped_duplicate": stores_skipped,
         "items_restored": items_added,
+        "items_skipped_duplicate": items_skipped,
         "receipts_restored": receipts_added,
+        "receipts_skipped_duplicate": receipts_skipped,
         "receipt_items_restored": receipt_items_added,
     }
 

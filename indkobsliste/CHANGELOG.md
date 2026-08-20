@@ -146,3 +146,7 @@
 ## 2.0.28
    - Rettet fejl: "Gendan fra fil"-knappen kunne ikke se/vælge den downloadede backup-fil på mobilen. Årsag: accept="application/json" filtrerer for strengt - mange mobile browsere gemmer den downloadede JSON-fil uden præcis den MIME-type, så filvælgeren skjulte den. Udvidet til også at matche på filendelse (.json)
 
+## 2.0.29
+   - Rettet fejl: /restore var ikke idempotent - gendannede man samme backup-fil flere gange, blev butikker/varer/bonner duplikeret for hver gendannelse. /restore springer nu automatisk dubletter over (butik: samme osm_id eller navn, vare: samme navn+afkrydsningsstatus, bon: samme butik+dato+total), testet ved at gendanne samme backup 3 gange i træk uden at data blev duplikeret
+   - Gendan-feedback i appen viser nu også hvor mange dubletter der blev sprunget over
+
