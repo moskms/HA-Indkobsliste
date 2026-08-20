@@ -143,3 +143,6 @@
    - Backup/gendan omfatter nu også Indscan bon: bonner og deres varelinjer (navn, pris, mængde, dato, total) tages med i /backup, og gendannes korrekt via /restore - testet med fuld roundtrip (opret bon -> backup -> gendan i tom database -> bekræft data matcher)
    - Backup- og gendan-knapperne i appen viser nu også antal bonner (og varelinjer ved gendannelse)
 
+## 2.0.28
+   - Rettet fejl: "Gendan fra fil"-knappen kunne ikke se/vælge den downloadede backup-fil på mobilen. Årsag: accept="application/json" filtrerer for strengt - mange mobile browsere gemmer den downloadede JSON-fil uden præcis den MIME-type, så filvælgeren skjulte den. Udvidet til også at matche på filendelse (.json)
+
