@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-08-20 -->
+<!-- Sidst opdateret: 2026-08-27 -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -28,9 +28,11 @@ udløbspåmindelse.
 - **Over dato** – registrer varer derhjemme med en talt holdbarhedsdato via et
   popup-flow: sig varens navn → indtal dato → godkend eller prøv igen. Dansk
   datofortolkning forstår både ordenstal ("tolvte") og grundtal ("tolv"),
-  månedsnavne og numeriske formater. Overskredne varer lægges automatisk
-  tilbage på selve indkøbslisten. Hvert kort har også en "🛒 Fjern + køb
-  igen"-knap, til når du har brugt det sidste af noget og skal have mere
+  månedsnavne og numeriske formater. Kort markeres **rød på selve
+  udløbsdatoen**, og **gul** fra dagen efter og frem. Overskredne varer
+  lægges automatisk tilbage på selve indkøbslisten. Hvert kort har også en
+  "🛒 Fjern + køb igen"-knap, til når du har brugt det sidste af noget og
+  skal have mere
 - **Indscan bon** – tag et billede af en kassebon med telefonens kamera, og
   Claude (vision) udleder butik, dato, varer og priser som struktureret
   tekst – **billedet gemmes aldrig**, hverken permanent eller midlertidigt.
@@ -40,6 +42,13 @@ udløbspåmindelse.
   bonner. Kræver en Anthropic API-nøgle – se
   ["Indscan bon: Anthropic API-nøgle"](#indscan-bon-anthropic-api-nøgle)
   nedenfor
+- **Bon-oversættelser** – kassebon-tekst er ofte forkortet/kryptisk (fx
+  "3st ROASTBEEF"). I bon-arkivet kan hver varelinje få en manuel
+  oversættelse til almindelig tekst; den gemmes i en global ordbog, så
+  fremtidige scanninger af samme rå tekst automatisk foreslår oversættelsen,
+  og prishistorik-opslag matcher på den pæne tekst. Oversættelsesfeltet
+  vises **kun på PC/desktop** (enheder med mus/trackpad) – ikke på mobil,
+  hvor det bare ville være i vejen
 - **Indstillinger** – stemmerettelser (ord talegenkendelsen konsekvent hører
   forkert, fx "roastbeef" hørt som "roskilde", rettes automatisk før det
   vises/gemmes), og en konfigurerbar daglig notifikation for varer der snart
@@ -47,7 +56,9 @@ udløbspåmindelse.
 - **Diagnostik** – se de seneste positionstjek og udløste notifikationer
   direkte i appen, uden at skulle grave i Home Assistants egne logs
 - **Backup/gendan** – download og upload en JSON-backup af alle butikker,
-  varer og bonner (fra Indscan bon), fx før en versionsopgradering
+  varer, bonner (fra Indscan bon) og bon-oversættelser, fx før en
+  versionsopgradering. Gendannelse er idempotent – dubletter springes
+  automatisk over, så samme backup-fil trygt kan gendannes flere gange
 
 ## Arkitektur
 
@@ -222,6 +233,9 @@ til git.
       gennemsyn/rettelse før gem – billedet gemmes aldrig
 - [x] Arkiv over tidligere bonner, og prishistorik-opslag pr. vare
 - [x] "Fjern + køb igen"-knap på Over dato-kort
+- [x] Rød/gul statusmarkering på Over dato (rød på udløbsdatoen, gul derefter)
+- [x] Manuel bon-tekst-oversættelsesordbog (kun synlig på desktop), anvendt
+      automatisk ved fremtidige scanninger og i prishistorik-matching
 
 ## Status – hvad mangler
 

@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-20 | Version: 2.0.29
+# Sidst opdateret: 2026-08-27 | Version: 2.0.30
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -34,6 +34,8 @@ from app.models import (
     Receipt,
     ReceiptItem,
     ReceiptCreate,
+    ReceiptItemTranslation,
+    ReceiptItemTranslationUpdate,
 )
 from app.overpass import find_nearby_shops
 from app.nominatim import find_nearby_shops_nominatim, haversine_m
@@ -687,13 +689,14 @@ def store_distance_log(limit: int = 100, session: Session = Depends(get_session)
 
 @app.get("/backup")
 def create_backup(session: Session = Depends(get_session)):
-    """Eksporterer alle butikker, varer og bonner (Indscan bon) som JSON.
-    Bonner eksporteres med deres varelinjer nestet under hver bon, da
-    ReceiptItem.receipt_id peger på et database-genereret id, som IKKE er
-    stabilt på tværs af en gendannelse (se restore_backup)."""
+    """Eksporterer alle butikker, varer, bonner (Indscan bon) og bon-
+    oversættelser som JSON. Bonner eksporteres med deres varelinjer nestet
+    under hver bon, da ReceiptItem.receipt_id peger på et database-genereret
+    id, som IKKE er stabilt på tværs af en gendannelse (se restore_backup)."""
     stores = session.exec(select(Store)).all()
     items = session.exec(select(Item)).all()
     receipts = session.exec(select(Receipt).order_by(Receipt.created_at)).all()
+    translations = session.exec(select(ReceiptItemTranslation)).all()
 
     receipts_export = []
     for r in receipts:
@@ -707,7 +710,12 @@ def create_backup(session: Session = Depends(get_session)):
             "created_at": r.created_at.isoformat(),
             "raw_model_output": r.raw_model_output,
             "items": [
-                {"name": ri.name, "price": ri.price, "quantity": ri.quantity}
+                {
+                    "name": ri.name,
+                    "translated_name": ri.translated_name,
+                    "price": ri.price,
+                    "quantity": ri.quantity,
+                }
                 for ri in receipt_items
             ],
         })
@@ -729,6 +737,10 @@ def create_backup(session: Session = Depends(get_session)):
             for i in items
         ],
         "receipts": receipts_export,
+        "receipt_item_translations": [
+            {"raw_text": t.raw_text, "correct_text": t.correct_text}
+            for t in translations
+        ],
     }
 
 
@@ -749,6 +761,8 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
     receipts_added = 0
     receipts_skipped = 0
     receipt_items_added = 0
+    translations_added = 0
+    translations_skipped = 0
 
     # --- Butikker: dublet hvis samme osm_id, ELLER samme navn (case-insensitivt) ---
     existing_stores = session.exec(select(Store)).all()
@@ -838,10 +852,27 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
             session.add(ReceiptItem(
                 receipt_id=receipt.id,
                 name=name,
+                translated_name=(item_in.get("translated_name") or None),
                 price=item_in.get("price", 0),
                 quantity=item_in.get("quantity", 1),
             ))
             receipt_items_added += 1
+
+    # --- Bon-oversættelser: dublet hvis samme raw_text (case-insensitivt) ---
+    existing_translations = session.exec(select(ReceiptItemTranslation)).all()
+    known_translation_keys = {t.raw_text.strip().lower() for t in existing_translations}
+
+    for t_data in backup.get("receipt_item_translations", []):
+        raw_text = (t_data.get("raw_text") or "").strip().lower()
+        correct_text = (t_data.get("correct_text") or "").strip()
+        if not raw_text or not correct_text:
+            continue
+        if raw_text in known_translation_keys:
+            translations_skipped += 1
+            continue
+        session.add(ReceiptItemTranslation(raw_text=raw_text, correct_text=correct_text))
+        known_translation_keys.add(raw_text)
+        translations_added += 1
 
     session.commit()
 
@@ -854,6 +885,8 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
         "receipts_restored": receipts_added,
         "receipts_skipped_duplicate": receipts_skipped,
         "receipt_items_restored": receipt_items_added,
+        "translations_restored": translations_added,
+        "translations_skipped_duplicate": translations_skipped,
     }
 
 
@@ -913,7 +946,9 @@ def list_expiry_items(session: Session = Depends(get_session)):
                 "id": i.id,
                 "name": i.name,
                 "expiry_date": i.expiry_date.isoformat(),
-                "is_expired": i.expiry_date < today,
+                "is_expired": i.expiry_date <= today,
+                "is_due_today": i.expiry_date == today,
+                "is_overdue": i.expiry_date < today,
                 "added_to_shopping_list": i.added_to_shopping_list,
             }
             for i in all_items
@@ -1097,8 +1132,40 @@ def check_expiring_soon(session: Session = Depends(get_session)):
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 
+def _lookup_receipt_translation(raw_name: str, session: Session) -> Optional[str]:
+    """Slår rå bon-tekst op i oversættelsesordbogen (case-insensitivt, præcist
+    match). Bruges både når en ny bon scannes (foreslå kendt oversættelse med
+    det samme) og ved prishistorik-opslag."""
+    key = raw_name.strip().lower()
+    if not key:
+        return None
+    match = session.exec(
+        select(ReceiptItemTranslation).where(ReceiptItemTranslation.raw_text == key)
+    ).first()
+    return match.correct_text if match else None
+
+
+def _upsert_receipt_translation(raw_name: str, correct_text: str, session: Session) -> None:
+    """Gemmer/opdaterer én oversættelse i den globale ordbog, så fremtidige
+    scanninger af samme rå tekst automatisk foreslår den. raw_text gemmes
+    altid små bogstaver (case-insensitivt opslag)."""
+    key = raw_name.strip().lower()
+    correct_text = correct_text.strip()
+    if not key or not correct_text:
+        return
+    existing = session.exec(
+        select(ReceiptItemTranslation).where(ReceiptItemTranslation.raw_text == key)
+    ).first()
+    if existing:
+        existing.correct_text = correct_text
+        existing.updated_at = datetime.utcnow()
+        session.add(existing)
+    else:
+        session.add(ReceiptItemTranslation(raw_text=key, correct_text=correct_text))
+
+
 @app.post("/receipts/scan")
-async def scan_receipt(file: UploadFile = File(...)):
+async def scan_receipt(file: UploadFile = File(...), session: Session = Depends(get_session)):
     """
     Tager imod et bon-billede, sender det til Claude, og returnerer det
     UDLEDTE resultat - gemmer INTET i databasen her. Frontend viser
@@ -1129,6 +1196,13 @@ async def scan_receipt(file: UploadFile = File(...)):
         logging.getLogger("indkobsliste.main").exception("Uventet fejl i scan_receipt")
         return {"success": False, "error": f"Uventet fejl: {exc}"}
 
+    # Foreslå kendte oversættelser med det samme, ud fra tidligere gemte
+    # rettelser (se ReceiptItemTranslation) - brugeren kan stadig rette den
+    # foreslåede tekst i gennemsynsskærmen før godkendelse.
+    for item in result.get("items", []):
+        suggestion = _lookup_receipt_translation(item["name"], session)
+        item["translated_name"] = suggestion
+
     return {"success": True, **result}
 
 
@@ -1152,12 +1226,18 @@ def save_receipt(receipt_in: ReceiptCreate, session: Session = Depends(get_sessi
         name = item_in.name.strip()
         if not name:
             continue
+        translated_name = (item_in.translated_name or "").strip() or None
         session.add(ReceiptItem(
             receipt_id=receipt.id,
             name=name,
+            translated_name=translated_name,
             price=item_in.price,
             quantity=item_in.quantity,
         ))
+        # Var oversættelsen bekræftet/rettet i gennemsynsskærmen? Så lærer
+        # ordbogen den med det samme, i stedet for at vente på arkivet.
+        if translated_name:
+            _upsert_receipt_translation(name, translated_name, session)
     session.commit()
     session.refresh(receipt)
     return receipt
@@ -1207,9 +1287,52 @@ def get_receipt(receipt_id: int, session: Session = Depends(get_session)):
         "total": receipt.total,
         "created_at": receipt.created_at.isoformat(),
         "items": [
-            {"id": i.id, "name": i.name, "price": i.price, "quantity": i.quantity}
+            {
+                "id": i.id,
+                "name": i.name,
+                "translated_name": i.translated_name,
+                "price": i.price,
+                "quantity": i.quantity,
+            }
             for i in items
         ],
+    }
+
+
+@app.patch("/receipts/{receipt_id}/items/{item_id}/translation")
+def set_receipt_item_translation(
+    receipt_id: int,
+    item_id: int,
+    update: ReceiptItemTranslationUpdate,
+    session: Session = Depends(get_session),
+):
+    """Gemmer brugerens oversættelse for én varelinje på en allerede gemt bon
+    (fx "3st ROASTBEEF" -> "3 stjernet Roastbeef"). Sætter både
+    ReceiptItem.translated_name på selve linjen (så den gemte bon straks
+    viser den pæne tekst) OG opdaterer den globale ordbog
+    (ReceiptItemTranslation), så fremtidige scanninger af samme rå tekst
+    automatisk foreslår denne oversættelse."""
+    _get_receipt_or_404(receipt_id, session)
+    item = session.get(ReceiptItem, item_id)
+    if item is None or item.receipt_id != receipt_id:
+        raise HTTPException(status_code=404, detail="Varelinje ikke fundet")
+
+    correct_text = update.correct_text.strip()
+    if not correct_text:
+        raise HTTPException(status_code=400, detail="Oversættelsen må ikke være tom")
+
+    item.translated_name = correct_text
+    session.add(item)
+    _upsert_receipt_translation(item.name, correct_text, session)
+    session.commit()
+    session.refresh(item)
+
+    return {
+        "id": item.id,
+        "name": item.name,
+        "translated_name": item.translated_name,
+        "price": item.price,
+        "quantity": item.quantity,
     }
 
 
@@ -1230,17 +1353,21 @@ def receipt_price_history(item_name: str, session: Session = Depends(get_session
     Prisudvikling for én vare over tid, på tværs af alle scannede/indtastede
     bonner - til at se om en vare er blevet dyrere, eller sammenligne butikker.
 
-    Matcher ustrengt (case-insensitive, delvis substreng), da samme vare
-    sjældent hedder præcis det samme fra bon til bon (fx "Øko Mælk 1L" vs.
-    "Mælk øko 1l"). Sorteret ældst-til-nyest, så frontend kan tegne den
-    direkte som en tidslinje.
+    Matcher ustrengt (case-insensitive, delvis substreng) på BÅDE den rå
+    bon-tekst og en evt. gemt oversættelse (se ReceiptItemTranslation) - så
+    et opslag på "roastbeef" også finder varelinjer der på selve bonnen kun
+    stod som "3st ROASTBEEF", hvis den er blevet oversat. Sorteret
+    ældst-til-nyest, så frontend kan tegne den direkte som en tidslinje.
     """
     needle = item_name.strip().lower()
     if not needle:
         return {"item_name": item_name, "count": 0, "entries": []}
 
     all_items = session.exec(select(ReceiptItem)).all()
-    matches = [i for i in all_items if needle in i.name.lower()]
+    matches = [
+        i for i in all_items
+        if needle in i.name.lower() or (i.translated_name and needle in i.translated_name.lower())
+    ]
 
     entries = []
     for match in matches:
@@ -1251,7 +1378,8 @@ def receipt_price_history(item_name: str, session: Session = Depends(get_session
             "receipt_id": receipt.id,
             "date": (receipt.purchase_date or receipt.created_at.date()).isoformat(),
             "store_name": receipt.store_name,
-            "item_name": match.name,
+            "item_name": match.translated_name or match.name,
+            "raw_name": match.name,
             "price": match.price,
             "quantity": match.quantity,
         })

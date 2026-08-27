@@ -150,3 +150,11 @@
    - Rettet fejl: /restore var ikke idempotent - gendannede man samme backup-fil flere gange, blev butikker/varer/bonner duplikeret for hver gendannelse. /restore springer nu automatisk dubletter over (butik: samme osm_id eller navn, vare: samme navn+afkrydsningsstatus, bon: samme butik+dato+total), testet ved at gendanne samme backup 3 gange i træk uden at data blev duplikeret
    - Gendan-feedback i appen viser nu også hvor mange dubletter der blev sprunget over
 
+## 2.0.30
+   - Rettet fejl: "Registrerede varer" (Over dato) blev først rød dagen EFTER udløbsdatoen, ikke på selve dagen - rettet til at blive rød på selve udløbsdatoen
+   - Ny gul status: varer der er mere end én dag over udløbsdatoen vises nu med gul i stedet for rød
+   - Ny bon-oversættelsesordbog til Indscan bon: i bon-arkivet kan hver varelinje nu få tilføjet en manuel oversættelse af den rå, ofte forkortede bon-tekst (fx "3st ROASTBEEF" -> "3 stjernet Roastbeef") - gemmes både på selve varelinjen og i en global ordbog, så fremtidige scanninger af samme rå tekst automatisk foreslår oversættelsen i gennemsynsskærmen
+   - Oversættelsesfeltet er bevidst kun synligt på enheder med mus/trackpad (PC), ikke på mobil/touch, da det er beregnet til at blive udfyldt i ro og mag ved et rigtigt tastatur
+   - Prishistorik-opslag matcher nu også på oversat navn, ikke kun den rå bon-tekst
+   - Backup/gendan omfatter nu også bon-oversættelsesordbogen, inkl. dublet-beskyttelse ved gentagne gendannelser
+

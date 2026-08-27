@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-18 | Version: 2.0.23
+# Sidst opdateret: 2026-08-27 | Version: 2.0.30
 """
 Databasemodeller for indkøbsliste-appen.
 """
@@ -186,9 +186,15 @@ class Receipt(SQLModel, table=True):
 
 
 class ReceiptItem(SQLModel, table=True):
+    """`name` er altid den rå tekst som Claude læste af bonen (eller blev
+    tastet manuelt) - urørt, så vi altid kan se hvad der faktisk stod.
+    `translated_name`, hvis sat, er brugerens egen oversættelse til
+    menneskelæselig tekst (fx "3st ROASTBEEF" -> "3 stjernet Roastbeef") og
+    bruges i stedet for `name`, når den findes - se ReceiptItemTranslation."""
     id: Optional[int] = Field(default=None, primary_key=True)
     receipt_id: int = Field(foreign_key="receipt.id")
     name: str
+    translated_name: Optional[str] = Field(default=None)
     price: float
     quantity: float = Field(default=1)
 
@@ -196,8 +202,10 @@ class ReceiptItem(SQLModel, table=True):
 class ReceiptItemInput(BaseModel):
     """Input-schema for én varelinje ved POST /receipts - bruges både til
     Claudes forslag (som brugeren kan rette i gennemsyns-skærmen) og til
-    fuldt manuel indtastning."""
+    fuldt manuel indtastning. translated_name er valgfri - sættes hvis en
+    kendt oversættelse blev fundet/bekræftet allerede ved scanning."""
     name: str
+    translated_name: Optional[str] = None
     price: float
     quantity: float = 1
 
@@ -212,3 +220,25 @@ class ReceiptCreate(BaseModel):
     total: Optional[float] = None
     items: list[ReceiptItemInput] = []
     raw_model_output: Optional[str] = None
+
+
+class ReceiptItemTranslation(SQLModel, table=True):
+    """Ordbog: rå bon-tekst -> menneskelæselig oversættelse, tastet af
+    brugeren i bon-arkivet (kun synligt på desktop). Samme princip som
+    VoiceCorrection, blot for scannet bon-tekst i stedet for tale.
+    raw_text gemmes altid små bogstaver (case-insensitivt opslag), så
+    "3st ROASTBEEF" og "3st roastbeef" matcher samme rettelse."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    raw_text: str = Field(unique=True)
+    correct_text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReceiptItemTranslationUpdate(BaseModel):
+    """Input-schema til at gemme/opdatere en oversættelse for én varelinje.
+    raw_text sendes med, så vi ved hvilken rå tekst oversættelsen gælder for
+    - selve varelinjen (identificeret ved item_id) får samtidig sat
+    translated_name, så den gemte bon også viser den pæne tekst med det
+    samme, ikke kun fremtidige scanninger."""
+    correct_text: str

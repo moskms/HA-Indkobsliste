@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-20 | Version: 2.0.29 -->
+<!-- Sidst opdateret: 2026-08-27 | Version: 2.0.30 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -222,6 +222,10 @@
       background: #c53030;
       color: white;
     }
+    .expiry-card.overdue {
+      background: #d69e2e;
+      color: white;
+    }
     .expiry-card .expiry-name {
       font-size: 1.05em;
       font-weight: 600;
@@ -230,10 +234,11 @@
       font-size: 0.9em;
       margin-top: 2px;
     }
-    .expiry-card.expired .expiry-date {
-      color: #ffe0e0;
+    .expiry-card.expired .expiry-date,
+    .expiry-card.overdue .expiry-date {
+      color: #fff3d6;
     }
-    .expiry-card:not(.expired) .expiry-date {
+    .expiry-card:not(.expired):not(.overdue) .expiry-date {
       color: #888;
     }
     .expiry-actions {
@@ -254,12 +259,17 @@
       background: #2b6cb0;
       color: white;
     }
-    .expiry-card.expired .expiry-remove-btn {
+    .expiry-card.expired .expiry-remove-btn,
+    .expiry-card.overdue .expiry-remove-btn {
       background: rgba(255,255,255,0.25);
     }
     .expiry-card.expired .expiry-rebuy-btn {
       background: white;
       color: #c53030;
+    }
+    .expiry-card.overdue .expiry-rebuy-btn {
+      background: white;
+      color: #d69e2e;
     }
     .suggestion-btn {
       display: block;
@@ -478,9 +488,45 @@
       font-size: 0.9em;
     }
     .receipt-card-detail .receipt-detail-row {
+      padding: 5px 0;
+      border-bottom: 1px solid #f4f4f4;
+    }
+    .receipt-detail-row-top {
       display: flex;
       justify-content: space-between;
-      padding: 3px 0;
+      gap: 8px;
+    }
+    .receipt-detail-name {
+      display: block;
+    }
+    .receipt-detail-raw {
+      display: block;
+      font-size: 0.85em;
+      color: #999;
+      font-style: italic;
+    }
+    /* Oversættelsesfeltet til bon-tekst vises kun på enheder med mus/
+       trackpad (rigtigt tastatur) - ikke på mobil/touch, hvor det bare
+       ville være i vejen. (hover:hover)+(pointer:fine) er den robuste måde
+       at kende forskel på fremfor at gætte ud fra skærmbredde. */
+    .receipt-translate-input {
+      display: none;
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .receipt-translate-input {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 4px;
+        padding: 4px 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.85em;
+        font-family: inherit;
+      }
+      .receipt-translate-input.saved {
+        border-color: #2f855a;
+      }
     }
     .receipt-remove-btn {
       margin-top: 10px;
@@ -573,7 +619,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.29</div>
+      <div id="menu-version">v2.0.30</div>
     </div>
   </div>
 
@@ -1683,7 +1729,7 @@
         a.download = `indkobsliste-backup-${dateStr}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        backupFeedbackEl.textContent = `Backup downloadet: ${data.stores.length} butik(ker), ${data.items.length} vare(r), ${data.receipts.length} bon(ner) ✓`;
+        backupFeedbackEl.textContent = `Backup downloadet: ${data.stores.length} butik(ker), ${data.items.length} vare(r), ${data.receipts.length} bon(ner), ${data.receipt_item_translations.length} bon-oversættelse(r) ✓`;
       } catch (err) {
         backupFeedbackEl.textContent = `Fejl ved download: ${err.message}`;
       }
@@ -1707,9 +1753,9 @@
           throw new Error(`Server svarede med status ${response.status}`);
         }
         const result = await response.json();
-        const skippedTotal = result.stores_skipped_duplicate + result.items_skipped_duplicate + result.receipts_skipped_duplicate;
+        const skippedTotal = result.stores_skipped_duplicate + result.items_skipped_duplicate + result.receipts_skipped_duplicate + result.translations_skipped_duplicate;
         const skippedText = skippedTotal > 0 ? ` · ${skippedTotal} dublet(ter) sprunget over` : "";
-        backupFeedbackEl.textContent = `Gendannet: ${result.stores_restored} butik(ker), ${result.items_restored} vare(r), ${result.receipts_restored} bon(ner) (${result.receipt_items_restored} varelinjer)${skippedText} ✓`;
+        backupFeedbackEl.textContent = `Gendannet: ${result.stores_restored} butik(ker), ${result.items_restored} vare(r), ${result.receipts_restored} bon(ner) (${result.receipt_items_restored} varelinjer), ${result.translations_restored} bon-oversættelse(r)${skippedText} ✓`;
       } catch (err) {
         backupFeedbackEl.textContent = `Fejl ved gendannelse: ${err.message}`;
       }
@@ -1735,7 +1781,7 @@
         }
         for (const item of data.entries) {
           const card = document.createElement("div");
-          card.className = "expiry-card" + (item.is_expired ? " expired" : "");
+          card.className = "expiry-card" + (item.is_due_today ? " expired" : item.is_overdue ? " overdue" : "");
           const dateStr = new Date(item.expiry_date).toLocaleDateString("da-DK");
           card.innerHTML = `
             <div class="expiry-name">${item.name}</div>
@@ -2226,7 +2272,66 @@
         for (const item of data.items) {
           const row = document.createElement("div");
           row.className = "receipt-detail-row";
-          row.innerHTML = `<span>${item.name}${item.quantity !== 1 ? ` (${item.quantity}x)` : ""}</span><span>${item.price.toFixed(2)} kr</span>`;
+
+          const top = document.createElement("div");
+          top.className = "receipt-detail-row-top";
+          const nameWrap = document.createElement("div");
+          const displayName = document.createElement("span");
+          displayName.className = "receipt-detail-name";
+          displayName.textContent = `${item.translated_name || item.name}${item.quantity !== 1 ? ` (${item.quantity}x)` : ""}`;
+          nameWrap.appendChild(displayName);
+          if (item.translated_name) {
+            const rawLine = document.createElement("span");
+            rawLine.className = "receipt-detail-raw";
+            rawLine.textContent = `På bonnen: ${item.name}`;
+            nameWrap.appendChild(rawLine);
+          }
+          const priceSpan = document.createElement("span");
+          priceSpan.textContent = `${item.price.toFixed(2)} kr`;
+          top.appendChild(nameWrap);
+          top.appendChild(priceSpan);
+          row.appendChild(top);
+
+          // Kun synligt på desktop (se CSS) - ret den rå bon-tekst til en
+          // menneskelæselig oversættelse, som gemmes og genbruges automatisk
+          // ved fremtidige scanninger af samme tekst.
+          const translateInput = document.createElement("input");
+          translateInput.className = "receipt-translate-input";
+          translateInput.type = "text";
+          translateInput.placeholder = `Oversæt "${item.name}" til...`;
+          translateInput.value = item.translated_name || "";
+          translateInput.addEventListener("change", async () => {
+            const correctText = translateInput.value.trim();
+            if (!correctText || correctText === item.translated_name) return;
+            try {
+              const patchResponse = await fetch(
+                `${API_BASE}/receipts/${receiptId}/items/${item.id}/translation`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ correct_text: correctText }),
+                }
+              );
+              if (!patchResponse.ok) {
+                throw new Error(`Server svarede med status ${patchResponse.status}`);
+              }
+              const updated = await patchResponse.json();
+              item.translated_name = updated.translated_name;
+              displayName.textContent = `${updated.translated_name || item.name}${item.quantity !== 1 ? ` (${item.quantity}x)` : ""}`;
+              if (!nameWrap.querySelector(".receipt-detail-raw")) {
+                const rawLine = document.createElement("span");
+                rawLine.className = "receipt-detail-raw";
+                rawLine.textContent = `På bonnen: ${item.name}`;
+                nameWrap.appendChild(rawLine);
+              }
+              translateInput.classList.add("saved");
+              setTimeout(() => translateInput.classList.remove("saved"), 1500);
+            } catch (err) {
+              alert(`Kunne ikke gemme oversættelsen: ${err.message}`);
+            }
+          });
+          row.appendChild(translateInput);
+
           detail.appendChild(row);
         }
         const removeBtn = document.createElement("button");
