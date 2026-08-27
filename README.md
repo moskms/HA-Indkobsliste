@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-08-27 -->
+<!-- Sidst opdateret: 2026-08-27 (v2.0.32) -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -46,9 +46,11 @@ udløbspåmindelse.
   "3st ROASTBEEF"). I bon-arkivet kan hver varelinje få en manuel
   oversættelse til almindelig tekst; den gemmes i en global ordbog, så
   fremtidige scanninger af samme rå tekst automatisk foreslår oversættelsen,
-  og prishistorik-opslag matcher på den pæne tekst. Oversættelsesfeltet
-  vises **kun på PC/desktop** (enheder med mus/trackpad) – ikke på mobil,
-  hvor det bare ville være i vejen
+  og prishistorik-opslag matcher på den pæne tekst. "Opdater"-knappen i
+  bon-arkivet synkroniserer også automatisk alle ældre bonner med den
+  nyeste ordbog, så én rettelse slår igennem alle steder samme rå tekst
+  optræder. Oversættelsesfeltet vises **kun på PC/desktop** (enheder med
+  mus/trackpad) – ikke på mobil, hvor det bare ville være i vejen
 - **Indstillinger** – stemmerettelser (ord talegenkendelsen konsekvent hører
   forkert, fx "roastbeef" hørt som "roskilde", rettes automatisk før det
   vises/gemmes), og en konfigurerbar daglig notifikation for varer der snart

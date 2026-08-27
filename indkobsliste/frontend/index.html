@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-27 | Version: 2.0.31 -->
+<!-- Sidst opdateret: 2026-08-27 | Version: 2.0.32 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -619,7 +619,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.31</div>
+      <div id="menu-version">v2.0.32</div>
     </div>
   </div>
 
@@ -2223,6 +2223,17 @@
       const listEl = document.getElementById("receipts-list");
       listEl.textContent = "Henter...";
       try {
+        // Synkroniser først alle varelinjer (også på ældre bonner) med den
+        // globale oversættelsesordbog - så en oversættelse tastet på ét
+        // køb af "3st ROASTBEEF" også slår igennem på tidligere/senere
+        // bonner med samme rå tekst, uden at man skal rette dem én for én.
+        // Fejler stille (ikke kritisk for selve visningen af listen).
+        try {
+          await fetch(`${API_BASE}/receipts/apply-known-translations`, { method: "POST" });
+        } catch (syncErr) {
+          console.warn("Kunne ikke synkronisere bon-oversættelser:", syncErr);
+        }
+
         const response = await fetch(`${API_BASE}/receipts`);
         if (!response.ok) {
           throw new Error(`Server svarede med status ${response.status}`);

@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-27 | Version: 2.0.30
+# Sidst opdateret: 2026-08-27 | Version: 2.0.32
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -1334,6 +1334,36 @@ def set_receipt_item_translation(
         "price": item.price,
         "quantity": item.quantity,
     }
+
+
+@app.post("/receipts/apply-known-translations")
+def apply_known_translations(session: Session = Depends(get_session)):
+    """Synkroniserer ALLE varelinjer (på tværs af alle bonner, også gamle) med
+    den globale oversættelsesordbog. Uden dette virker en ny/rettet
+    oversættelse kun fremadrettet (nye scanninger) eller på den ene
+    varelinje, den blev tastet på - ældre bonner med samme rå tekst ville
+    ellers stå uoversatte for evigt, medmindre man rettede dem manuelt én
+    for én. Kaldes fra "Opdater"-knappen i bon-arkivet.
+
+    Ordbogen er autoritativ: enhver varelinje hvis rå tekst matcher en kendt
+    oversættelse, får sat translated_name til den nyeste værdi - også hvis
+    den allerede havde en (ældre) oversættelse."""
+    translations = session.exec(select(ReceiptItemTranslation)).all()
+    lookup = {t.raw_text: t.correct_text for t in translations}
+    if not lookup:
+        return {"success": True, "items_updated": 0}
+
+    all_items = session.exec(select(ReceiptItem)).all()
+    updated = 0
+    for item in all_items:
+        correct_text = lookup.get(item.name.strip().lower())
+        if correct_text and item.translated_name != correct_text:
+            item.translated_name = correct_text
+            session.add(item)
+            updated += 1
+
+    session.commit()
+    return {"success": True, "items_updated": updated}
 
 
 @app.delete("/receipts/{receipt_id}", status_code=204)

@@ -161,3 +161,7 @@
 ## 2.0.31
    - Rettet fejl: klik i det nye oversættelsesfelt i bon-arkivet lukkede med det samme selve bonnen igen, fordi klikket boblede op til kortets egen åbn/luk-knap. Alle klik inde i den åbne bon-detalje (oversættelsesfelt, "Slet bon") lukker nu ikke længere boksen
 
+## 2.0.32
+   - Ny: "Opdater"-knappen i bon-arkivet (Tidligere bonner) synkroniserer nu automatisk ALLE varelinjer, også på ældre bonner, med den nyeste bon-oversættelsesordbog - retter man oversættelsen for "3st ROASTBEEF" på én bon, slår den nu også igennem på alle andre bonner (uanset butik/dato) med samme rå tekst, uden at man skal rette dem én for én
+   - Nyt endpoint POST /receipts/apply-known-translations til dette
+
