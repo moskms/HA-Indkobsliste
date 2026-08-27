@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-27 | Version: 2.0.30 -->
+<!-- Sidst opdateret: 2026-08-27 | Version: 2.0.31 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -619,7 +619,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.30</div>
+      <div id="menu-version">v2.0.31</div>
     </div>
   </div>
 
@@ -2260,6 +2260,10 @@
       const detail = document.createElement("div");
       detail.className = "receipt-card-detail";
       detail.textContent = "Henter...";
+      // Kortet selv har en klik-lytter der åbner/lukker denne detalje-boks -
+      // uden dette ville ethvert klik INDE i boksen (fx i oversættelsesfeltet)
+      // boble op og lukke boksen igen med det samme.
+      detail.addEventListener("click", (e) => e.stopPropagation());
       card.appendChild(detail);
 
       try {

@@ -158,3 +158,6 @@
    - Prishistorik-opslag matcher nu også på oversat navn, ikke kun den rå bon-tekst
    - Backup/gendan omfatter nu også bon-oversættelsesordbogen, inkl. dublet-beskyttelse ved gentagne gendannelser
 
+## 2.0.31
+   - Rettet fejl: klik i det nye oversættelsesfelt i bon-arkivet lukkede med det samme selve bonnen igen, fordi klikket boblede op til kortets egen åbn/luk-knap. Alle klik inde i den åbne bon-detalje (oversættelsesfelt, "Slet bon") lukker nu ikke længere boksen
+
