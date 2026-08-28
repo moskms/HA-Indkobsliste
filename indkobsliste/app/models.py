@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-27 | Version: 2.0.30
+# Sidst opdateret: 2026-08-28 | Version: 2.0.33
 """
 Databasemodeller for indkøbsliste-appen.
 """
@@ -190,13 +190,20 @@ class ReceiptItem(SQLModel, table=True):
     tastet manuelt) - urørt, så vi altid kan se hvad der faktisk stod.
     `translated_name`, hvis sat, er brugerens egen oversættelse til
     menneskelæselig tekst (fx "3st ROASTBEEF" -> "3 stjernet Roastbeef") og
-    bruges i stedet for `name`, når den findes - se ReceiptItemTranslation."""
+    bruges i stedet for `name`, når den findes - se ReceiptItemTranslation.
+
+    `price` er hele linjens PRIS SOM FAKTISK BETALT (kvantitet inkluderet,
+    EFTER evt. rabat på selve linjen) - ikke listeprisen. `discount`, hvis
+    sat, er det beløb der blev trukket fra for denne linje pga. en "RABAT"-
+    linje direkte under varen på bonnen (rent informativt/til visning -
+    `price` er allerede nettet ned med det)."""
     id: Optional[int] = Field(default=None, primary_key=True)
     receipt_id: int = Field(foreign_key="receipt.id")
     name: str
     translated_name: Optional[str] = Field(default=None)
     price: float
     quantity: float = Field(default=1)
+    discount: Optional[float] = Field(default=None)
 
 
 class ReceiptItemInput(BaseModel):
@@ -208,6 +215,7 @@ class ReceiptItemInput(BaseModel):
     translated_name: Optional[str] = None
     price: float
     quantity: float = 1
+    discount: Optional[float] = None
 
 
 class ReceiptCreate(BaseModel):

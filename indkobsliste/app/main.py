@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-27 | Version: 2.0.32
+# Sidst opdateret: 2026-08-28 | Version: 2.0.33
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -715,6 +715,7 @@ def create_backup(session: Session = Depends(get_session)):
                     "translated_name": ri.translated_name,
                     "price": ri.price,
                     "quantity": ri.quantity,
+                    "discount": ri.discount,
                 }
                 for ri in receipt_items
             ],
@@ -855,6 +856,7 @@ def restore_backup(backup: dict, session: Session = Depends(get_session)):
                 translated_name=(item_in.get("translated_name") or None),
                 price=item_in.get("price", 0),
                 quantity=item_in.get("quantity", 1),
+                discount=item_in.get("discount"),
             ))
             receipt_items_added += 1
 
@@ -1233,6 +1235,7 @@ def save_receipt(receipt_in: ReceiptCreate, session: Session = Depends(get_sessi
             translated_name=translated_name,
             price=item_in.price,
             quantity=item_in.quantity,
+            discount=item_in.discount,
         ))
         # Var oversættelsen bekræftet/rettet i gennemsynsskærmen? Så lærer
         # ordbogen den med det samme, i stedet for at vente på arkivet.
@@ -1293,6 +1296,7 @@ def get_receipt(receipt_id: int, session: Session = Depends(get_session)):
                 "translated_name": i.translated_name,
                 "price": i.price,
                 "quantity": i.quantity,
+                "discount": i.discount,
             }
             for i in items
         ],
@@ -1333,6 +1337,7 @@ def set_receipt_item_translation(
         "translated_name": item.translated_name,
         "price": item.price,
         "quantity": item.quantity,
+        "discount": item.discount,
     }
 
 

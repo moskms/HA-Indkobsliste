@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-08-18 | Version: 2.0.23
+Sidst opdateret: 2026-08-27 | Version: 2.0.33
 
 Indscan bon: sender et billede af en kassebon til Claude (vision) og får en
 struktureret udtrækning tilbage (butik, dato, varelinjer, total) - i stedet
@@ -52,9 +52,13 @@ _EXTRACT_TOOL = {
             "items": {
                 "type": "array",
                 "description": (
-                    "Hver enkelt varelinje på bonnen. Udelad rabatlinjer, pant "
-                    "der trækkes fra, og opsummeringslinjer (moms, total) - de "
-                    "skal ikke med som en 'vare'."
+                    "Hver enkelt varelinje på bonnen. Udelad selve pant-linjer "
+                    "og opsummeringslinjer (moms, total) - de skal ikke med "
+                    "som en 'vare'. Rabatlinjer ('RABAT', 'TILBUD' e.l. med et "
+                    "beløb og typisk et efterfølgende '-') skal IKKE med som "
+                    "deres egen varelinje, men bruges i stedet til at beregne "
+                    "'price' og udfylde 'discount' på varen, de hører til - "
+                    "se de to felters beskrivelse."
                 ),
                 "items": {
                     "type": "object",
@@ -62,11 +66,29 @@ _EXTRACT_TOOL = {
                         "name": {"type": "string", "description": "Varens navn, som det står på bonnen."},
                         "price": {
                             "type": "number",
-                            "description": "Prisen for denne linje i DKK, som den faktisk står (efter evt. tilbud).",
+                            "description": (
+                                "Den samlede pris for HELE linjen (kvantitet "
+                                "inkluderet) som FAKTISK BETALT - altså EFTER "
+                                "evt. rabat. Eksempel: varen viser '2 x 49,00' "
+                                "= 98,00, og der står en 'RABAT 23,00-' lige "
+                                "under -> price skal være 98,00 - 23,00 = "
+                                "75,00 (ikke 98,00, og ikke 49,00 pr. stk)."
+                            ),
                         },
                         "quantity": {
                             "type": "number",
                             "description": "Antal/mængde hvis angivet på bonnen, ellers 1.",
+                        },
+                        "discount": {
+                            "type": "number",
+                            "description": (
+                                "Beløbet i DKK der blev trukket fra for netop "
+                                "denne vare, HVIS der står en 'RABAT'/'TILBUD'-"
+                                "linje lige under varen på bonnen (positivt "
+                                "tal, fx 6.95 hvis der står 'RABAT 6,95-'). "
+                                "Udelad feltet helt hvis varen ikke har nogen "
+                                "rabatlinje."
+                            ),
                         },
                     },
                     "required": ["name", "price"],
@@ -84,7 +106,12 @@ _EXTRACT_TOOL = {
 _SYSTEM_PROMPT = (
     "Du udtrækker struktureret data fra billeder af danske kassebon/kvitteringer "
     "til en indkøbsapp. Vær præcis - gæt ikke på tal du ikke tydeligt kan læse. "
-    "Hvis et felt ikke kan læses pålideligt, udelad det i stedet for at gætte."
+    "Hvis et felt ikke kan læses pålideligt, udelad det i stedet for at gætte. "
+    "Mange danske bonner (fx Føtex) viser en 'RABAT'-linje direkte under en "
+    "vare, med et beløb efterfulgt af '-' (fx 'RABAT 6,95-') - dette er IKKE "
+    "en selvstændig varelinje, men en reduktion af varen lige ovenover. Sæt "
+    "altid 'price' til linjens pris EFTER denne rabat er trukket fra, og "
+    "angiv selve rabatbeløbet i 'discount' på samme vare."
 )
 
 
@@ -184,6 +211,11 @@ def extract_receipt(image_bytes: bytes, media_type: str, api_key: str) -> dict:
                 "name": str(item.get("name", "")).strip(),
                 "price": float(item.get("price", 0)),
                 "quantity": float(item.get("quantity", 1) or 1),
+                "discount": (
+                    float(item["discount"])
+                    if item.get("discount") is not None
+                    else None
+                ),
             }
             for item in result.get("items", [])
             if str(item.get("name", "")).strip()

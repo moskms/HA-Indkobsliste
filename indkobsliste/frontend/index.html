@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-27 | Version: 2.0.32 -->
+<!-- Sidst opdateret: 2026-08-28 | Version: 2.0.33 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -619,7 +619,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.32</div>
+      <div id="menu-version">v2.0.33</div>
     </div>
   </div>
 
@@ -2301,6 +2301,13 @@
             rawLine.textContent = `På bonnen: ${item.name}`;
             nameWrap.appendChild(rawLine);
           }
+          if (item.discount) {
+            const discountLine = document.createElement("span");
+            discountLine.className = "receipt-detail-raw";
+            discountLine.style.color = "#c53030";
+            discountLine.textContent = `Rabat: -${item.discount.toFixed(2)} kr`;
+            nameWrap.appendChild(discountLine);
+          }
           const priceSpan = document.createElement("span");
           priceSpan.textContent = `${item.price.toFixed(2)} kr`;
           top.appendChild(nameWrap);
@@ -2349,6 +2356,27 @@
 
           detail.appendChild(row);
         }
+
+        // "Rabat i alt": mange bonner (fx Føtex) trækker rabat fra pr. vare
+        // via en separat linje på selve bonnen ("RABAT 6,95-"), som ikke
+        // tælles med i totalen forrest på bonnen. Regnes ud som forskellen
+        // mellem summen af varelinjerne og den faktiske total - virker både
+        // for ældre bonner (hvor rabatten slet ikke blev fanget pr. vare) og
+        // nyere bonner (hvor kun en evt. bon-bred rabat ikke kan henføres
+        // til én bestemt vare) uden at kræve gemt data om selve rabatten.
+        if (data.total != null) {
+          const itemsSum = data.items.reduce((sum, i) => sum + i.price, 0);
+          const discountTotal = itemsSum - data.total;
+          if (discountTotal > 0.01) {
+            const discountLine = document.createElement("div");
+            discountLine.style.marginTop = "6px";
+            discountLine.style.fontSize = "0.9em";
+            discountLine.style.color = "#c53030";
+            discountLine.textContent = `Rabat i alt: -${discountTotal.toFixed(2)} kr`;
+            detail.appendChild(discountLine);
+          }
+        }
+
         const removeBtn = document.createElement("button");
         removeBtn.className = "receipt-remove-btn";
         removeBtn.textContent = "Slet bon";

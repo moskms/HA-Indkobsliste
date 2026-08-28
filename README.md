@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-08-27 (v2.0.32) -->
+<!-- Sidst opdateret: 2026-08-28 (v2.0.33) -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -41,7 +41,9 @@ udløbspåmindelse.
   tidligere bonner, og et prishistorik-opslag pr. vare på tværs af alle
   bonner. Kræver en Anthropic API-nøgle – se
   ["Indscan bon: Anthropic API-nøgle"](#indscan-bon-anthropic-api-nøgle)
-  nedenfor
+  nedenfor. Rabat pr. vare (fx "RABAT 6,95-" lige under en vare, almindeligt
+  hos bl.a. Føtex) fanges nu korrekt – varens gemte pris er hvad der faktisk
+  blev betalt, ikke listeprisen, og "Rabat i alt" vises i bon-arkivet
 - **Bon-oversættelser** – kassebon-tekst er ofte forkortet/kryptisk (fx
   "3st ROASTBEEF"). I bon-arkivet kan hver varelinje få en manuel
   oversættelse til almindelig tekst; den gemmes i en global ordbog, så

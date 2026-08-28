@@ -165,3 +165,8 @@
    - Ny: "Opdater"-knappen i bon-arkivet (Tidligere bonner) synkroniserer nu automatisk ALLE varelinjer, også på ældre bonner, med den nyeste bon-oversættelsesordbog - retter man oversættelsen for "3st ROASTBEEF" på én bon, slår den nu også igennem på alle andre bonner (uanset butik/dato) med samme rå tekst, uden at man skal rette dem én for én
    - Nyt endpoint POST /receipts/apply-known-translations til dette
 
+## 2.0.33
+   - Ny "Rabat i alt" over "Slet bon" i bon-arkivet - viser den samlede rabat på bonnen (forskellen mellem summen af varelinjerne og bonnens total), også på allerede indscannede bonner. Bekræftet mod en rigtig Føtex-bon: 298,40 kr i varelinjer minus 34,85 kr i rabat = 263,55 kr total, nøjagtigt som bonnen selv viser
+   - Rettet grundlæggende fejl i Indscan bon: bonner med rabat pr. vare (fx "RABAT 6,95-" lige under en vare, meget almindeligt hos Føtex m.fl.) blev tidligere gemt med LISTEPRISEN i stedet for hvad der faktisk blev betalt, fordi Claude blev bedt om at se bort fra rabatlinjer i stedet for at bruge dem. Claude bruger nu rabatlinjen til at regne varens linjepris ned til det faktisk betalte beløb, og gemmer selve rabatbeløbet i et nyt felt (discount) - vises som en lille rød note under varen i bon-arkivet
+   - Backup/gendan udvidet til også at omfatte discount-feltet pr. varelinje
+
