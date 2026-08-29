@@ -188,3 +188,7 @@
 ## 2.0.37
    - Ny automatisk kontrol i gennemsynsskærmen: "Beregnet total" (summen af varelinjerne minus rabat) sammenlignes nu live med selve Total-feltet - stemmer de ikke overens, vises en tydelig advarsel med hvor meget der mangler/er for meget, så en fejllæst pris opdages FØR bonnen gemmes, i stedet for først at blive opdaget bagefter i arkivet
 
+## 2.0.38
+   - Gennemsynsskærmens varelinjer er redesignet til at genbruge PRÆCIS samme skrift/opsætning som bon-arkivet: varenavn til venstre/pris til højre uden kant om felterne, "{antal} x {stk-pris}" og en "Rabat -X kr"-linje - og begge dele vises nu KUN når de reelt afviger fra standard (antal 1, ingen rabat), ligesom i arkivet
+   - Fjernet "✕ Fjern linje"-knappen fra hver varelinje - et tomt varenavn springes stadig automatisk over ved gem, så en linje kan stadig fjernes ved at rydde navnefeltet
+
