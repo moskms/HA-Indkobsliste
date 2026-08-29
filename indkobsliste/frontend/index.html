@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-28 | Version: 2.0.34 -->
+<!-- Sidst opdateret: 2026-08-28 | Version: 2.0.35 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -427,10 +427,16 @@
     }
 
     /* --- Indscan bon --- */
+    /* Gennemsynsskærmen (før gem) er bevidst opbygget til at ligne selve
+       papirbonnen og bon-arkivet: varenavn til venstre, pris til højre,
+       med antal og en evt. RABAT-linje nedenunder - i stedet for tre
+       smalle bokse i en række, som var svære at se hvad hørte til hvad. */
     .receipt-item-row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 6px;
+      background: #f9f9f9;
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
     }
     .receipt-item-row input {
       padding: 8px;
@@ -438,17 +444,53 @@
       border: 1px solid #ccc;
       font-size: 0.95em;
       min-width: 0;
+      box-sizing: border-box;
     }
-    .receipt-item-name { flex: 2; }
-    .receipt-item-price { flex: 1; }
-    .receipt-item-qty { flex: 1; }
+    .receipt-item-row-top {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .receipt-item-name { flex: 1; }
+    .receipt-item-price-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+    }
+    .receipt-item-price { width: 80px; text-align: right; }
+    .receipt-item-suffix { color: #888; font-size: 0.9em; }
+    .receipt-item-row-sub {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 0.9em;
+      color: #666;
+    }
+    .receipt-item-qty { width: 60px; }
+    .receipt-item-discount-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      color: #c53030;
+      font-size: 0.9em;
+    }
+    .receipt-item-discount { width: 70px; text-align: right; }
+    .receipt-item-translate.receipt-translate-input {
+      margin-top: 6px;
+    }
     .receipt-item-remove {
-      padding: 8px 10px;
+      display: block;
+      margin-top: 8px;
+      padding: 6px 10px;
       border: none;
       border-radius: 6px;
       background: #c53030;
       color: white;
       cursor: pointer;
+      font-size: 0.85em;
     }
     .receipt-choice-btn {
       flex: 1;
@@ -619,7 +661,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.34</div>
+      <div id="menu-version">v2.0.35</div>
     </div>
   </div>
 
@@ -695,6 +737,23 @@
         </label>
         <div id="receipt-items-editor" style="margin-bottom:8px;"></div>
         <button id="receipt-add-item-row" style="width:100%; padding:8px; margin-bottom:12px; border:1px dashed #aaa; border-radius:8px; background:none; color:#555; cursor:pointer;">+ Tilføj varelinje</button>
+
+        <!-- Samme bund-opstilling som selve bonnen og bon-arkivet: rabat
+             total (kun hvis der er nogen) og en beregnet total ud fra
+             varelinjerne, til at tjekke/kopiere ind i selve Total-feltet
+             nedenunder (som forbliver det der rent faktisk gemmes). -->
+        <div id="receipt-computed-totals" style="margin-bottom:12px; padding:10px; background:#f4f4f4; border-radius:8px; font-size:0.9em;">
+          <div id="receipt-computed-discount-row" style="display:none; justify-content:space-between; color:#c53030;">
+            <span>Rabat total</span>
+            <span id="receipt-computed-discount"></span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-weight:600; margin-top:4px;">
+            <span>Beregnet total</span>
+            <span id="receipt-computed-total"></span>
+          </div>
+          <button type="button" id="receipt-use-computed-total" style="margin-top:6px; width:100%; padding:6px; border:1px solid #2b6cb0; border-radius:6px; background:white; color:#2b6cb0; cursor:pointer; font-size:0.85em;">Brug denne total ↓</button>
+        </div>
+
         <label style="display:block; margin-bottom:14px;">
           Total (kr)
           <input type="number" step="0.01" id="receipt-total-input" style="width:100%; padding:10px; margin-top:4px; border-radius:8px; border:1px solid #ccc; font-size:1em; box-sizing:border-box;">
@@ -2141,17 +2200,123 @@
       }
     }
 
+    // Genopbygger "Rabat total" og "Beregnet total" ud fra de aktuelle
+    // varelinjer, hver gang pris/rabat/antal ændres - samme princip som
+    // bon-arkivets bundlinjer, blot regnet direkte ud fra felterne i stedet
+    // for allerede-gemt data. item-price er linjens NETTOPRIS (efter evt.
+    // rabat), så "Beregnet total" er simpelt sum af alle nettopriser.
+    function updateReceiptComputedTotals() {
+      let sumNet = 0;
+      let sumDiscount = 0;
+      for (const row of receiptItemsEditor.querySelectorAll(".receipt-item-row")) {
+        const price = parseFloat(row.querySelector(".receipt-item-price").value);
+        const discount = parseFloat(row.querySelector(".receipt-item-discount").value);
+        if (!isNaN(price)) sumNet += price;
+        if (!isNaN(discount)) sumDiscount += discount;
+      }
+      const discountRow = document.getElementById("receipt-computed-discount-row");
+      if (sumDiscount > 0.01) {
+        discountRow.style.display = "flex";
+        document.getElementById("receipt-computed-discount").textContent = `-${sumDiscount.toFixed(2)} kr`;
+      } else {
+        discountRow.style.display = "none";
+      }
+      document.getElementById("receipt-computed-total").textContent = `${sumNet.toFixed(2)} kr`;
+      document.getElementById("receipt-use-computed-total").dataset.value = sumNet.toFixed(2);
+    }
+
+    document.getElementById("receipt-use-computed-total").addEventListener("click", () => {
+      receiptTotalInput.value = document.getElementById("receipt-use-computed-total").dataset.value || "";
+    });
+
     function addReceiptItemRow(item) {
       const row = document.createElement("div");
       row.className = "receipt-item-row";
-      row.innerHTML = `
-        <input type="text" class="receipt-item-name" placeholder="Varenavn" value="${(item?.name || "").replace(/"/g, "&quot;")}">
-        <input type="number" step="0.01" class="receipt-item-price" placeholder="Pris" value="${item?.price ?? ""}">
-        <input type="number" step="0.01" class="receipt-item-qty" placeholder="Antal" value="${item?.quantity ?? 1}">
-        <button class="receipt-item-remove" title="Fjern linje">✕</button>
-      `;
-      row.querySelector(".receipt-item-remove").addEventListener("click", () => row.remove());
+
+      const topRow = document.createElement("div");
+      topRow.className = "receipt-item-row-top";
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.className = "receipt-item-name";
+      nameInput.placeholder = "Varenavn";
+      nameInput.value = item?.name || "";
+      const priceWrap = document.createElement("div");
+      priceWrap.className = "receipt-item-price-wrap";
+      const priceInput = document.createElement("input");
+      priceInput.type = "number";
+      priceInput.step = "0.01";
+      priceInput.className = "receipt-item-price";
+      priceInput.placeholder = "Pris";
+      priceInput.value = item?.price ?? "";
+      const priceSuffix = document.createElement("span");
+      priceSuffix.className = "receipt-item-suffix";
+      priceSuffix.textContent = "kr";
+      priceWrap.appendChild(priceInput);
+      priceWrap.appendChild(priceSuffix);
+      topRow.appendChild(nameInput);
+      topRow.appendChild(priceWrap);
+      row.appendChild(topRow);
+
+      const subRow = document.createElement("div");
+      subRow.className = "receipt-item-row-sub";
+      const qtyLabel = document.createElement("span");
+      qtyLabel.textContent = "Antal";
+      const qtyInput = document.createElement("input");
+      qtyInput.type = "number";
+      qtyInput.step = "0.01";
+      qtyInput.className = "receipt-item-qty";
+      qtyInput.value = item?.quantity ?? 1;
+      subRow.appendChild(qtyLabel);
+      subRow.appendChild(qtyInput);
+      row.appendChild(subRow);
+
+      // Kun synligt på desktop (se CSS på .receipt-translate-input) - ret
+      // den rå bon-tekst til en menneskelæselig oversættelse, forudfyldt
+      // hvis ordbogen allerede kender teksten fra en tidligere bon.
+      const translateInput = document.createElement("input");
+      translateInput.type = "text";
+      translateInput.className = "receipt-translate-input receipt-item-translate";
+      translateInput.placeholder = `Oversæt "${item?.name || ""}" til...`;
+      translateInput.value = item?.translated_name || "";
+      nameInput.addEventListener("input", () => {
+        translateInput.placeholder = `Oversæt "${nameInput.value}" til...`;
+      });
+      row.appendChild(translateInput);
+
+      // Rabat-linje, som på selve bonnen ("RABAT  -23,00")
+      const discountRow = document.createElement("div");
+      discountRow.className = "receipt-item-discount-row";
+      const discountLabel = document.createElement("span");
+      discountLabel.textContent = "RABAT";
+      const discountInput = document.createElement("input");
+      discountInput.type = "number";
+      discountInput.step = "0.01";
+      discountInput.className = "receipt-item-discount";
+      discountInput.placeholder = "0";
+      discountInput.value = item?.discount ?? "";
+      const discountSuffix = document.createElement("span");
+      discountSuffix.textContent = "kr";
+      discountRow.appendChild(discountLabel);
+      discountRow.appendChild(discountInput);
+      discountRow.appendChild(discountSuffix);
+      row.appendChild(discountRow);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "receipt-item-remove";
+      removeBtn.title = "Fjern linje";
+      removeBtn.textContent = "✕ Fjern linje";
+      removeBtn.addEventListener("click", () => {
+        row.remove();
+        updateReceiptComputedTotals();
+      });
+      row.appendChild(removeBtn);
+
+      for (const input of [priceInput, discountInput, qtyInput]) {
+        input.addEventListener("input", updateReceiptComputedTotals);
+      }
+
       receiptItemsEditor.appendChild(row);
+      updateReceiptComputedTotals();
     }
 
     document.getElementById("receipt-add-item-row").addEventListener("click", () => {
@@ -2186,8 +2351,17 @@
         const name = row.querySelector(".receipt-item-name").value.trim();
         const price = parseFloat(row.querySelector(".receipt-item-price").value);
         const quantity = parseFloat(row.querySelector(".receipt-item-qty").value) || 1;
+        const translatedName = row.querySelector(".receipt-item-translate").value.trim();
+        const discountRaw = row.querySelector(".receipt-item-discount").value;
+        const discount = discountRaw !== "" ? parseFloat(discountRaw) : NaN;
         if (name && !isNaN(price)) {
-          items.push({ name, price, quantity });
+          items.push({
+            name,
+            price,
+            quantity,
+            translated_name: translatedName || null,
+            discount: !isNaN(discount) ? discount : null,
+          });
         }
       }
       const storeName = receiptStoreInput.value.trim();

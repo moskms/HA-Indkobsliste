@@ -175,3 +175,9 @@
    - "Rabat i alt" er omdøbt til "Rabat total", og der vises nu også en "Total"-linje (bonnens faktiske total) lige under - samme bund-opstilling som selve bonnen
    - Rettet regnefejl i "Rabat total": beregningen brugte tidligere kun nettoprisen, hvilket ville vise 0 kr i rabat for korrekt indscannede bonner (fordi rabatten allerede var trukket fra prisen) - regner nu ud fra listeprisen (nettopris + rabat) i stedet
 
+## 2.0.35
+   - Redesignet gennemsynsskærmen (Indscan bon, både efter en scanning og ved manuel indtastning): varenavn til venstre og pris til højre, i stedet for tre smalle bokse i en række der var svære at overskue
+   - Ny redigerbar RABAT-linje pr. varelinje (som på selve bonnen), og et "Oversæt ... til..."-felt (kun på desktop, samme som i bon-arkivet) - forudfyldt hvis ordbogen allerede kender teksten
+   - Ny "Rabat total" og "Beregnet total" nederst, der opdateres live mens du retter priser/rabat - med en "Brug denne total"-knap til at kopiere den ind i selve Total-feltet
+   - Claudes forslag til oversættelse og evt. fundne rabatbeløb fra scanningen bliver nu rent faktisk vist i gennemsynsskærmen (blev tidligere modtaget fra serveren, men droppet af frontenden uden at blive brugt)
+
