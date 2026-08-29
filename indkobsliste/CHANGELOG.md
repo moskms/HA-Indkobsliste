@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.0.40
+- Alle kr-beløb i Indscan bon (gennemsynsskærm og bon-arkiv) vises nu konsekvent med 2 decimaler og komma som decimaltegn (fx "98,00 kr" i stedet for bare "98 kr") - gælder pris, rabat, stykpris, beregnet total/rabat total, total-tjekket og prishistorik. Ny `formatKr()`-hjælpefunktion; pris-/rabat-/total-inputfelterne udfyldes nu også med tvungne 2 decimaler, ikke kun de skrivebeskyttede visninger
+
 ## 2.0.39
 - Rettet to konkrete fejlscanninger fra en rigtig bon: (1) Claude havde selv ganget "2 x 46,50" sammen til price=93 i stedet for at aflæse bonnens eget trykte totalbeløb (skulle være 98,00 kr fra "2 x 49,00") - promptet forbyder nu udtrykkeligt enhver multiplikation/division ved udfyldelse af price/quantity, hvert tal skal læses uafhængigt direkte fra det trykte; (2) en vare ("ØKRR. HUSHOLDNING") fik opfundet/lånt et beløb (43,95 kr) den ikke selv havde trykt ud for sig på bonnen - promptet forbyder nu at tildele et beløb fra en nabolinje, og linjer uden eget trykt beløb (fx fortsættelse af et langt varenavn) skal udelades eller lægges sammen med varen ovenover i stedet for at blive sin egen (forkerte) vare
 

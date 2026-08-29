@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.39 -->
+<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.40 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -650,7 +650,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.39</div>
+      <div id="menu-version">v2.0.40</div>
     </div>
   </div>
 
@@ -2054,6 +2054,14 @@
     // Billedet forlader aldrig telefonens hukommelse, før det (evt. gen-)
     // sendes til /receipts/scan - det gemmes ALDRIG på serveren. pendingReceiptBlob
     // holdes klar til "Prøv igen", så en fejlet scanning ikke kræver et nyt billede.
+
+    // Formaterer et kr-beløb med præcis 2 decimaler og komma som decimaltegn
+    // (fx 98 -> "98,00", 21.95 -> "21,95") - bruges alle steder et beløb vises
+    // som tekst, så "98 kr" aldrig vises hvor der reelt menes "98,00 kr".
+    function formatKr(amount) {
+      return (Number(amount) || 0).toFixed(2).replace(".", ",");
+    }
+
     const receiptCameraInput = document.getElementById("receipt-camera-input");
     const receiptScanButton = document.getElementById("receipt-scan-button");
     const receiptManualButton = document.getElementById("receipt-manual-button");
@@ -2213,11 +2221,11 @@
       const discountRow = document.getElementById("receipt-computed-discount-row");
       if (sumDiscount > 0.01) {
         discountRow.style.display = "flex";
-        document.getElementById("receipt-computed-discount").textContent = `-${sumDiscount.toFixed(2)} kr`;
+        document.getElementById("receipt-computed-discount").textContent = `-${formatKr(sumDiscount)} kr`;
       } else {
         discountRow.style.display = "none";
       }
-      document.getElementById("receipt-computed-total").textContent = `${sumNet.toFixed(2)} kr`;
+      document.getElementById("receipt-computed-total").textContent = `${formatKr(sumNet)} kr`;
       document.getElementById("receipt-use-computed-total").dataset.value = sumNet.toFixed(2);
       updateReceiptTotalCheck(sumNet);
     }
@@ -2243,8 +2251,8 @@
       } else {
         checkEl.style.background = "#fdecea";
         checkEl.style.color = "#c53030";
-        const diffText = diff > 0 ? `${diff.toFixed(2)} kr for meget` : `${Math.abs(diff).toFixed(2)} kr for lidt`;
-        checkEl.textContent = `⚠️ Total stemmer ikke: varelinjerne giver ${sumNet.toFixed(2)} kr (${diffText} i forhold til Total) - tjek om en pris er fejllæst`;
+        const diffText = diff > 0 ? `${formatKr(diff)} kr for meget` : `${formatKr(Math.abs(diff))} kr for lidt`;
+        checkEl.textContent = `⚠️ Total stemmer ikke: varelinjerne giver ${formatKr(sumNet)} kr (${diffText} i forhold til Total) - tjek om en pris er fejllæst`;
       }
     }
 
@@ -2269,7 +2277,7 @@
       const qtyLine = row.querySelector(".receipt-item-qty-line");
       if (qty !== 1) {
         qtyLine.style.display = "block";
-        row.querySelector(".receipt-item-unit-price").textContent = (qty ? (price / qty) : price).toFixed(2);
+        row.querySelector(".receipt-item-unit-price").textContent = formatKr(qty ? (price / qty) : price);
       } else {
         qtyLine.style.display = "none";
       }
@@ -2295,7 +2303,10 @@
       priceInput.step = "0.01";
       priceInput.className = "receipt-item-price-input";
       priceInput.placeholder = "Pris";
-      priceInput.value = item?.price ?? "";
+      // toFixed(2) i stedet for den rå værdi, så feltet altid viser "98,00"
+      // og ikke "98" - number-inputs viser selv talformatet med dansk komma,
+      // men polstrer ikke selv med decimaler.
+      priceInput.value = item?.price != null && item.price !== "" ? Number(item.price).toFixed(2) : "";
       priceLine.appendChild(priceInput);
       priceLine.appendChild(document.createTextNode(" kr"));
       topRow.appendChild(nameInput);
@@ -2343,7 +2354,7 @@
       discountInput.type = "number";
       discountInput.step = "0.01";
       discountInput.className = "receipt-item-discount-input";
-      discountInput.value = item?.discount ?? "";
+      discountInput.value = item?.discount != null && item.discount !== "" ? Number(item.discount).toFixed(2) : "";
       discountPriceLine.appendChild(document.createTextNode("-"));
       discountPriceLine.appendChild(discountInput);
       discountPriceLine.appendChild(document.createTextNode(" kr"));
@@ -2370,7 +2381,7 @@
     function openReceiptReview(data) {
       receiptStoreInput.value = data.store_name || "";
       receiptDateInput.value = data.purchase_date || "";
-      receiptTotalInput.value = data.total ?? "";
+      receiptTotalInput.value = data.total != null && data.total !== "" ? Number(data.total).toFixed(2) : "";
       receiptItemsEditor.innerHTML = "";
       const items = data.items && data.items.length ? data.items : [{ name: "", price: "", quantity: 1 }];
       for (const item of items) {
@@ -2470,7 +2481,7 @@
             : new Date(entry.created_at).toLocaleDateString("da-DK");
           card.innerHTML = `
             <div class="receipt-card-store">${entry.store_name}</div>
-            <div class="receipt-card-meta">${dateStr} · ${entry.item_count} vare(r)${entry.total != null ? ` · ${entry.total.toFixed(2)} kr` : ""}</div>
+            <div class="receipt-card-meta">${dateStr} · ${entry.item_count} vare(r)${entry.total != null ? ` · ${formatKr(entry.total)} kr` : ""}</div>
           `;
           card.addEventListener("click", () => toggleReceiptDetail(card, entry.id));
           listEl.appendChild(card);
@@ -2526,7 +2537,7 @@
           if (item.quantity !== 1) {
             const qtyLine = document.createElement("span");
             qtyLine.className = "receipt-detail-raw";
-            qtyLine.textContent = `${item.quantity} x ${unitPrice.toFixed(2)}`;
+            qtyLine.textContent = `${item.quantity} x ${formatKr(unitPrice)}`;
             nameWrap.appendChild(qtyLine);
           }
           if (item.translated_name) {
@@ -2536,7 +2547,7 @@
             nameWrap.appendChild(rawLine);
           }
           const priceSpan = document.createElement("span");
-          priceSpan.textContent = `${listPrice.toFixed(2)} kr`;
+          priceSpan.textContent = `${formatKr(listPrice)} kr`;
           top.appendChild(nameWrap);
           top.appendChild(priceSpan);
           row.appendChild(top);
@@ -2548,7 +2559,7 @@
             const discountLabel = document.createElement("span");
             discountLabel.textContent = "RABAT";
             const discountAmount = document.createElement("span");
-            discountAmount.textContent = `-${discount.toFixed(2)} kr`;
+            discountAmount.textContent = `-${formatKr(discount)} kr`;
             discountRow.appendChild(discountLabel);
             discountRow.appendChild(discountAmount);
             row.appendChild(discountRow);
@@ -2618,7 +2629,7 @@
             discountLine.style.display = "flex";
             discountLine.style.justifyContent = "space-between";
             discountLine.style.color = "#c53030";
-            discountLine.innerHTML = `<span>Rabat total</span><span>-${discountTotal.toFixed(2)} kr</span>`;
+            discountLine.innerHTML = `<span>Rabat total</span><span>-${formatKr(discountTotal)} kr</span>`;
             totalsBlock.appendChild(discountLine);
           }
 
@@ -2626,7 +2637,7 @@
           totalLine.style.display = "flex";
           totalLine.style.justifyContent = "space-between";
           totalLine.style.fontWeight = "600";
-          totalLine.innerHTML = `<span>Total</span><span>${data.total.toFixed(2)} kr</span>`;
+          totalLine.innerHTML = `<span>Total</span><span>${formatKr(data.total)} kr</span>`;
           totalsBlock.appendChild(totalLine);
 
           detail.appendChild(totalsBlock);
@@ -2672,7 +2683,7 @@
           const dateStr = new Date(entry.date).toLocaleDateString("da-DK");
           row.innerHTML = `
             <span>${dateStr} · ${entry.store_name} · ${entry.item_name}</span>
-            <span class="price-history-price">${entry.price.toFixed(2)} kr</span>
+            <span class="price-history-price">${formatKr(entry.price)} kr</span>
           `;
           resultEl.appendChild(row);
         }
