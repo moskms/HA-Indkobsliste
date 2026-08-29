@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-28 | Version: 2.0.35 -->
+<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.36 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -661,7 +661,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.35</div>
+      <div id="menu-version">v2.0.36</div>
     </div>
   </div>
 
@@ -2205,14 +2205,19 @@
     // bon-arkivets bundlinjer, blot regnet direkte ud fra felterne i stedet
     // for allerede-gemt data. item-price er linjens NETTOPRIS (efter evt.
     // rabat), så "Beregnet total" er simpelt sum af alle nettopriser.
+    // Pris-feltet er varens LISTEPRIS (som trykt på bonnen, før rabat) -
+    // "Beregnet total" (det faktisk betalte) er derfor summen af pris MINUS
+    // rabat pr. linje, ikke bare summen af priserne alene.
     function updateReceiptComputedTotals() {
       let sumNet = 0;
       let sumDiscount = 0;
       for (const row of receiptItemsEditor.querySelectorAll(".receipt-item-row")) {
         const price = parseFloat(row.querySelector(".receipt-item-price").value);
         const discount = parseFloat(row.querySelector(".receipt-item-discount").value);
-        if (!isNaN(price)) sumNet += price;
-        if (!isNaN(discount)) sumDiscount += discount;
+        const priceVal = isNaN(price) ? 0 : price;
+        const discountVal = isNaN(discount) ? 0 : discount;
+        sumNet += priceVal - discountVal;
+        sumDiscount += discountVal;
       }
       const discountRow = document.getElementById("receipt-computed-discount-row");
       if (sumDiscount > 0.01) {
@@ -2246,7 +2251,7 @@
       priceInput.type = "number";
       priceInput.step = "0.01";
       priceInput.className = "receipt-item-price";
-      priceInput.placeholder = "Pris";
+      priceInput.placeholder = "Pris (før rabat)";
       priceInput.value = item?.price ?? "";
       const priceSuffix = document.createElement("span");
       priceSuffix.className = "receipt-item-suffix";
@@ -2466,10 +2471,10 @@
           // (før rabat) ud for navnet, en "{antal} x {stk-pris}"-linje hvis
           // der er købt mere end 1, og en RABAT-linje med sit eget beløb -
           // ligesom "2 x 49,00  98,00" + "RABAT  -23,00" på papirbonnen.
-          // item.price er allerede NETTOPRISEN (efter rabat) - listeprisen
-          // regnes derfor tilbage som price + discount.
+          // item.price ER listeprisen (Claude transskriberer kun det trykte
+          // tal, regner aldrig rabatten fra selv) - ingen udregning nødvendig.
           const discount = item.discount || 0;
-          const listPrice = item.price + discount;
+          const listPrice = item.price;
           const unitPrice = item.quantity ? listPrice / item.quantity : listPrice;
 
           const top = document.createElement("div");
@@ -2554,14 +2559,13 @@
         }
 
         // "Rabat total" + "Total", samme bund-opstilling som selve bonnen.
-        // Rabat total regnes ud fra LISTEPRISEN (item.price + item.discount),
-        // ikke item.price alene - ellers ville en korrekt nettoberegnet vare
-        // (hvor rabatten allerede er trukket fra price) vise 0 i rabat, selv
-        // om der tydeligt var en. Formlen virker stadig for ældre bonner uden
-        // gemt discount (discount er da 0/udefineret, så listepris = price,
-        // og forskellen mod total er så hele den u-attribuerede rabat).
+        // item.price ER listeprisen (Claude transskriberer kun det trykte
+        // tal for linjen, uden at trække rabatten fra selv) - "Rabat total"
+        // er derfor blot forskellen mellem summen af varelinjerne og den
+        // faktiske total, uanset om rabatten er fanget i discount-feltet
+        // eller ej.
         if (data.total != null) {
-          const listPriceSum = data.items.reduce((sum, i) => sum + i.price + (i.discount || 0), 0);
+          const listPriceSum = data.items.reduce((sum, i) => sum + i.price, 0);
           const discountTotal = listPriceSum - data.total;
 
           const totalsBlock = document.createElement("div");

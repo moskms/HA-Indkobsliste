@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-28 | Version: 2.0.33
+# Sidst opdateret: 2026-08-29 | Version: 2.0.36
 """
 Databasemodeller for indkøbsliste-appen.
 """
@@ -192,11 +192,13 @@ class ReceiptItem(SQLModel, table=True):
     menneskelæselig tekst (fx "3st ROASTBEEF" -> "3 stjernet Roastbeef") og
     bruges i stedet for `name`, når den findes - se ReceiptItemTranslation.
 
-    `price` er hele linjens PRIS SOM FAKTISK BETALT (kvantitet inkluderet,
-    EFTER evt. rabat på selve linjen) - ikke listeprisen. `discount`, hvis
-    sat, er det beløb der blev trukket fra for denne linje pga. en "RABAT"-
-    linje direkte under varen på bonnen (rent informativt/til visning -
-    `price` er allerede nettet ned med det)."""
+    `price` er hele linjens pris PRÆCIS SOM DEN STÅR TRYKT på bonnen
+    (kvantitet inkluderet, FØR evt. rabat) - Claude transskriberer kun,
+    regner aldrig rabatten fra selv (se receipt_scan.py). `discount`, hvis
+    sat, er rabatbeløbet PRÆCIS SOM DET STÅR TRYKT på en "RABAT"-linje
+    direkte under varen. Den faktisk betalte pris for linjen er altså
+    `price - (discount or 0)`, regnet ud af appen (frontend), ikke af
+    Claude."""
     id: Optional[int] = Field(default=None, primary_key=True)
     receipt_id: int = Field(foreign_key="receipt.id")
     name: str

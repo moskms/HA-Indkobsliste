@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-08-27 | Version: 2.0.33
+Sidst opdateret: 2026-08-29 | Version: 2.0.36
 
 Indscan bon: sender et billede af en kassebon til Claude (vision) og får en
 struktureret udtrækning tilbage (butik, dato, varelinjer, total) - i stedet
@@ -56,9 +56,11 @@ _EXTRACT_TOOL = {
                     "og opsummeringslinjer (moms, total) - de skal ikke med "
                     "som en 'vare'. Rabatlinjer ('RABAT', 'TILBUD' e.l. med et "
                     "beløb og typisk et efterfølgende '-') skal IKKE med som "
-                    "deres egen varelinje, men bruges i stedet til at beregne "
-                    "'price' og udfylde 'discount' på varen, de hører til - "
-                    "se de to felters beskrivelse."
+                    "deres egen varelinje, men transskriberes præcist ind i "
+                    "'discount' på varen de hører til - se feltets beskrivelse. "
+                    "REGN ALDRIG selv videre på tallene (ingen subtraktion, "
+                    "ingen division) - transskriber kun de tal der faktisk "
+                    "står trykt, ét ad gangen."
                 ),
                 "items": {
                     "type": "object",
@@ -67,12 +69,12 @@ _EXTRACT_TOOL = {
                         "price": {
                             "type": "number",
                             "description": (
-                                "Den samlede pris for HELE linjen (kvantitet "
-                                "inkluderet) som FAKTISK BETALT - altså EFTER "
-                                "evt. rabat. Eksempel: varen viser '2 x 49,00' "
-                                "= 98,00, og der står en 'RABAT 23,00-' lige "
-                                "under -> price skal være 98,00 - 23,00 = "
-                                "75,00 (ikke 98,00, og ikke 49,00 pr. stk)."
+                                "Prisen PRÆCIS SOM DEN STÅR TRYKT ud for "
+                                "varelinjen (kvantitet inkluderet, FØR evt. "
+                                "rabat) - transskriber tallet, regn IKKE selv "
+                                "rabatten fra. Eksempel: '2 x 49,00 ... 98,00' "
+                                "-> price = 98.00 (ikke 75, ikke 49 - kun det "
+                                "tal der reelt står ud for linjen)."
                             ),
                         },
                         "quantity": {
@@ -82,12 +84,12 @@ _EXTRACT_TOOL = {
                         "discount": {
                             "type": "number",
                             "description": (
-                                "Beløbet i DKK der blev trukket fra for netop "
-                                "denne vare, HVIS der står en 'RABAT'/'TILBUD'-"
-                                "linje lige under varen på bonnen (positivt "
-                                "tal, fx 6.95 hvis der står 'RABAT 6,95-'). "
-                                "Udelad feltet helt hvis varen ikke har nogen "
-                                "rabatlinje."
+                                "Beløbet PRÆCIS SOM DET STÅR TRYKT på en "
+                                "'RABAT'/'TILBUD'-linje lige under varen "
+                                "(positivt tal, uden minus - fx 6.95 hvis der "
+                                "står 'RABAT 6,95-'). Transskriber kun tallet, "
+                                "regn ikke noget ud fra det. Udelad feltet "
+                                "helt hvis varen ikke har nogen rabatlinje."
                             ),
                         },
                     },
@@ -109,9 +111,12 @@ _SYSTEM_PROMPT = (
     "Hvis et felt ikke kan læses pålideligt, udelad det i stedet for at gætte. "
     "Mange danske bonner (fx Føtex) viser en 'RABAT'-linje direkte under en "
     "vare, med et beløb efterfulgt af '-' (fx 'RABAT 6,95-') - dette er IKKE "
-    "en selvstændig varelinje, men en reduktion af varen lige ovenover. Sæt "
-    "altid 'price' til linjens pris EFTER denne rabat er trukket fra, og "
-    "angiv selve rabatbeløbet i 'discount' på samme vare."
+    "en selvstændig varelinje, men hører til varen lige ovenover. VIGTIGT: "
+    "du skal ALDRIG selv regne rabatten fra prisen eller lave anden "
+    "udregning - transskriber udelukkende de tal der faktisk står trykt på "
+    "bonnen, hver for sig ('price' = linjens egen trykte pris, 'discount' = "
+    "rabatlinjens eget trykte beløb). Appen regner selv videre på tallene "
+    "bagefter."
 )
 
 

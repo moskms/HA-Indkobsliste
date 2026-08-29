@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-28 | Version: 2.0.33
+# Sidst opdateret: 2026-08-29 | Version: 2.0.36
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -1415,7 +1415,12 @@ def receipt_price_history(item_name: str, session: Session = Depends(get_session
             "store_name": receipt.store_name,
             "item_name": match.translated_name or match.name,
             "raw_name": match.name,
-            "price": match.price,
+            # match.price er listeprisen (trykt på bonnen, før rabat) - til
+            # prishistorik er det den faktisk BETALTE pris der er
+            # interessant, så discount trækkes fra her.
+            "price": match.price - (match.discount or 0),
+            "list_price": match.price,
+            "discount": match.discount,
             "quantity": match.quantity,
         })
 
