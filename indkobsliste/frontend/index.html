@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.36 -->
+<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.37 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -661,7 +661,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.36</div>
+      <div id="menu-version">v2.0.37</div>
     </div>
   </div>
 
@@ -754,10 +754,15 @@
           <button type="button" id="receipt-use-computed-total" style="margin-top:6px; width:100%; padding:6px; border:1px solid #2b6cb0; border-radius:6px; background:white; color:#2b6cb0; cursor:pointer; font-size:0.85em;">Brug denne total ↓</button>
         </div>
 
-        <label style="display:block; margin-bottom:14px;">
+        <label style="display:block; margin-bottom:6px;">
           Total (kr)
           <input type="number" step="0.01" id="receipt-total-input" style="width:100%; padding:10px; margin-top:4px; border-radius:8px; border:1px solid #ccc; font-size:1em; box-sizing:border-box;">
         </label>
+        <!-- Sammenligner "Beregnet total" (summen af varelinjerne minus
+             rabat) med selve Total-feltet - stemmer de ikke, er der stor
+             sandsynlighed for at en pris er blevet fejllæst ved scanningen.
+             Opdateres live, både når varelinjer OG selve Total-feltet ændres. -->
+        <div id="receipt-total-check" style="display:none; margin-bottom:14px; padding:8px 10px; border-radius:8px; font-size:0.9em;"></div>
         <div style="display:flex; gap:8px;">
           <button id="receipt-save-button" style="flex:1; padding:14px; border:none; border-radius:10px; background:#2f855a; color:white; cursor:pointer; font-size:1.05em;">✅ Gem</button>
           <button id="receipt-cancel-button" style="flex:1; padding:14px; border:none; border-radius:10px; background:#e2e8f0; color:#333; cursor:pointer; font-size:1.05em;">Annullér</button>
@@ -2201,13 +2206,10 @@
     }
 
     // Genopbygger "Rabat total" og "Beregnet total" ud fra de aktuelle
-    // varelinjer, hver gang pris/rabat/antal ændres - samme princip som
-    // bon-arkivets bundlinjer, blot regnet direkte ud fra felterne i stedet
-    // for allerede-gemt data. item-price er linjens NETTOPRIS (efter evt.
-    // rabat), så "Beregnet total" er simpelt sum af alle nettopriser.
-    // Pris-feltet er varens LISTEPRIS (som trykt på bonnen, før rabat) -
-    // "Beregnet total" (det faktisk betalte) er derfor summen af pris MINUS
-    // rabat pr. linje, ikke bare summen af priserne alene.
+    // varelinjer, hver gang pris/rabat/antal ændres. Pris-feltet er varens
+    // LISTEPRIS (som trykt på bonnen, før rabat - se receipt_scan.py), så
+    // "Beregnet total" (det faktisk betalte) er summen af pris MINUS rabat
+    // pr. linje.
     function updateReceiptComputedTotals() {
       let sumNet = 0;
       let sumDiscount = 0;
@@ -2228,7 +2230,38 @@
       }
       document.getElementById("receipt-computed-total").textContent = `${sumNet.toFixed(2)} kr`;
       document.getElementById("receipt-use-computed-total").dataset.value = sumNet.toFixed(2);
+      updateReceiptTotalCheck(sumNet);
     }
+
+    // Sammenligner "Beregnet total" (sumNet, fra varelinjerne) med selve
+    // Total-feltet - stemmer de ikke overens (mere end nogle få øre, for at
+    // undgå at ren afrunding vises som fejl), er der stor sandsynlighed for
+    // at Claude har fejllæst en pris et sted, og brugeren bør tjekke
+    // varelinjerne igennem før der trykkes Gem.
+    function updateReceiptTotalCheck(sumNet) {
+      const checkEl = document.getElementById("receipt-total-check");
+      const statedTotal = parseFloat(receiptTotalInput.value);
+      if (isNaN(statedTotal)) {
+        checkEl.style.display = "none";
+        return;
+      }
+      const diff = sumNet - statedTotal;
+      checkEl.style.display = "block";
+      if (Math.abs(diff) <= 0.02) {
+        checkEl.style.background = "#e6f4ea";
+        checkEl.style.color = "#2f855a";
+        checkEl.textContent = "✓ Total stemmer overens med varelinjerne";
+      } else {
+        checkEl.style.background = "#fdecea";
+        checkEl.style.color = "#c53030";
+        const diffText = diff > 0 ? `${diff.toFixed(2)} kr for meget` : `${Math.abs(diff).toFixed(2)} kr for lidt`;
+        checkEl.textContent = `⚠️ Total stemmer ikke: varelinjerne giver ${sumNet.toFixed(2)} kr (${diffText} i forhold til Total) - tjek om en pris er fejllæst`;
+      }
+    }
+
+    receiptTotalInput.addEventListener("input", () => updateReceiptTotalCheck(
+      parseFloat(document.getElementById("receipt-use-computed-total").dataset.value) || 0
+    ));
 
     document.getElementById("receipt-use-computed-total").addEventListener("click", () => {
       receiptTotalInput.value = document.getElementById("receipt-use-computed-total").dataset.value || "";

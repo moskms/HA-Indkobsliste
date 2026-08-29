@@ -185,3 +185,6 @@
    - Rettet grundlæggende designfejl i Indscan bon: Claude blev bedt om selv at regne rabatten fra prisen (fx 98,00 - 23,00 = 75,00), hvilket i praksis gav regnefejl på enkelte varelinjer (bekræftet: én linje endte forkert som 70,00 kr i stedet for 75,00 kr). Claude laver nu INGEN udregning overhovedet - "price" er nu udelukkende varens listepris PRÆCIS som den står trykt (fx 98,00), og "discount" er rabatbeløbet PRÆCIS som det står trykt (fx 23,00). Al regning (nettopris, rabat total) foretages nu af selve appen, ikke af Claude - markant mere pålideligt, da transskription er en langt enklere opgave end transskription+udregning
    - Bon-arkiv, gennemsynsskærm og prishistorik-opslag er opdateret til den nye betydning af "price" (listepris i stedet for nettopris)
 
+## 2.0.37
+   - Ny automatisk kontrol i gennemsynsskærmen: "Beregnet total" (summen af varelinjerne minus rabat) sammenlignes nu live med selve Total-feltet - stemmer de ikke overens, vises en tydelig advarsel med hvor meget der mangler/er for meget, så en fejllæst pris opdages FØR bonnen gemmes, i stedet for først at blive opdaget bagefter i arkivet
+
