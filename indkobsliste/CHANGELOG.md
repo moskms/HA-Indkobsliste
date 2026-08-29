@@ -170,3 +170,8 @@
    - Rettet grundlæggende fejl i Indscan bon: bonner med rabat pr. vare (fx "RABAT 6,95-" lige under en vare, meget almindeligt hos Føtex m.fl.) blev tidligere gemt med LISTEPRISEN i stedet for hvad der faktisk blev betalt, fordi Claude blev bedt om at se bort fra rabatlinjer i stedet for at bruge dem. Claude bruger nu rabatlinjen til at regne varens linjepris ned til det faktisk betalte beløb, og gemmer selve rabatbeløbet i et nyt felt (discount) - vises som en lille rød note under varen i bon-arkivet
    - Backup/gendan udvidet til også at omfatte discount-feltet pr. varelinje
 
+## 2.0.34
+   - Bon-arkivets varelinjer viser nu rabat på samme måde som selve papirbonnen: listepris ud for varens navn, en "{antal} x {stk-pris}"-linje hvis der er købt mere end 1, og en separat RABAT-linje med sit eget beløb - i stedet for kun at vise nettoprisen som ét tal
+   - "Rabat i alt" er omdøbt til "Rabat total", og der vises nu også en "Total"-linje (bonnens faktiske total) lige under - samme bund-opstilling som selve bonnen
+   - Rettet regnefejl i "Rabat total": beregningen brugte tidligere kun nettoprisen, hvilket ville vise 0 kr i rabat for korrekt indscannede bonner (fordi rabatten allerede var trukket fra prisen) - regner nu ud fra listeprisen (nettopris + rabat) i stedet
+

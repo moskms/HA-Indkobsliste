@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-28 | Version: 2.0.33 -->
+<!-- Sidst opdateret: 2026-08-28 | Version: 2.0.34 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -619,7 +619,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.33</div>
+      <div id="menu-version">v2.0.34</div>
     </div>
   </div>
 
@@ -2288,31 +2288,53 @@
           const row = document.createElement("div");
           row.className = "receipt-detail-row";
 
+          // Vises på PRÆCIS samme måde som selve bonnen: varens listepris
+          // (før rabat) ud for navnet, en "{antal} x {stk-pris}"-linje hvis
+          // der er købt mere end 1, og en RABAT-linje med sit eget beløb -
+          // ligesom "2 x 49,00  98,00" + "RABAT  -23,00" på papirbonnen.
+          // item.price er allerede NETTOPRISEN (efter rabat) - listeprisen
+          // regnes derfor tilbage som price + discount.
+          const discount = item.discount || 0;
+          const listPrice = item.price + discount;
+          const unitPrice = item.quantity ? listPrice / item.quantity : listPrice;
+
           const top = document.createElement("div");
           top.className = "receipt-detail-row-top";
           const nameWrap = document.createElement("div");
           const displayName = document.createElement("span");
           displayName.className = "receipt-detail-name";
-          displayName.textContent = `${item.translated_name || item.name}${item.quantity !== 1 ? ` (${item.quantity}x)` : ""}`;
+          displayName.textContent = item.translated_name || item.name;
           nameWrap.appendChild(displayName);
+          if (item.quantity !== 1) {
+            const qtyLine = document.createElement("span");
+            qtyLine.className = "receipt-detail-raw";
+            qtyLine.textContent = `${item.quantity} x ${unitPrice.toFixed(2)}`;
+            nameWrap.appendChild(qtyLine);
+          }
           if (item.translated_name) {
             const rawLine = document.createElement("span");
             rawLine.className = "receipt-detail-raw";
             rawLine.textContent = `På bonnen: ${item.name}`;
             nameWrap.appendChild(rawLine);
           }
-          if (item.discount) {
-            const discountLine = document.createElement("span");
-            discountLine.className = "receipt-detail-raw";
-            discountLine.style.color = "#c53030";
-            discountLine.textContent = `Rabat: -${item.discount.toFixed(2)} kr`;
-            nameWrap.appendChild(discountLine);
-          }
           const priceSpan = document.createElement("span");
-          priceSpan.textContent = `${item.price.toFixed(2)} kr`;
+          priceSpan.textContent = `${listPrice.toFixed(2)} kr`;
           top.appendChild(nameWrap);
           top.appendChild(priceSpan);
           row.appendChild(top);
+
+          if (discount > 0) {
+            const discountRow = document.createElement("div");
+            discountRow.className = "receipt-detail-row-top";
+            discountRow.style.color = "#c53030";
+            const discountLabel = document.createElement("span");
+            discountLabel.textContent = "RABAT";
+            const discountAmount = document.createElement("span");
+            discountAmount.textContent = `-${discount.toFixed(2)} kr`;
+            discountRow.appendChild(discountLabel);
+            discountRow.appendChild(discountAmount);
+            row.appendChild(discountRow);
+          }
 
           // Kun synligt på desktop (se CSS) - ret den rå bon-tekst til en
           // menneskelæselig oversættelse, som gemmes og genbruges automatisk
@@ -2357,24 +2379,40 @@
           detail.appendChild(row);
         }
 
-        // "Rabat i alt": mange bonner (fx Føtex) trækker rabat fra pr. vare
-        // via en separat linje på selve bonnen ("RABAT 6,95-"), som ikke
-        // tælles med i totalen forrest på bonnen. Regnes ud som forskellen
-        // mellem summen af varelinjerne og den faktiske total - virker både
-        // for ældre bonner (hvor rabatten slet ikke blev fanget pr. vare) og
-        // nyere bonner (hvor kun en evt. bon-bred rabat ikke kan henføres
-        // til én bestemt vare) uden at kræve gemt data om selve rabatten.
+        // "Rabat total" + "Total", samme bund-opstilling som selve bonnen.
+        // Rabat total regnes ud fra LISTEPRISEN (item.price + item.discount),
+        // ikke item.price alene - ellers ville en korrekt nettoberegnet vare
+        // (hvor rabatten allerede er trukket fra price) vise 0 i rabat, selv
+        // om der tydeligt var en. Formlen virker stadig for ældre bonner uden
+        // gemt discount (discount er da 0/udefineret, så listepris = price,
+        // og forskellen mod total er så hele den u-attribuerede rabat).
         if (data.total != null) {
-          const itemsSum = data.items.reduce((sum, i) => sum + i.price, 0);
-          const discountTotal = itemsSum - data.total;
+          const listPriceSum = data.items.reduce((sum, i) => sum + i.price + (i.discount || 0), 0);
+          const discountTotal = listPriceSum - data.total;
+
+          const totalsBlock = document.createElement("div");
+          totalsBlock.style.marginTop = "8px";
+          totalsBlock.style.paddingTop = "6px";
+          totalsBlock.style.borderTop = "1px solid #eee";
+          totalsBlock.style.fontSize = "0.9em";
+
           if (discountTotal > 0.01) {
             const discountLine = document.createElement("div");
-            discountLine.style.marginTop = "6px";
-            discountLine.style.fontSize = "0.9em";
+            discountLine.style.display = "flex";
+            discountLine.style.justifyContent = "space-between";
             discountLine.style.color = "#c53030";
-            discountLine.textContent = `Rabat i alt: -${discountTotal.toFixed(2)} kr`;
-            detail.appendChild(discountLine);
+            discountLine.innerHTML = `<span>Rabat total</span><span>-${discountTotal.toFixed(2)} kr</span>`;
+            totalsBlock.appendChild(discountLine);
           }
+
+          const totalLine = document.createElement("div");
+          totalLine.style.display = "flex";
+          totalLine.style.justifyContent = "space-between";
+          totalLine.style.fontWeight = "600";
+          totalLine.innerHTML = `<span>Total</span><span>${data.total.toFixed(2)} kr</span>`;
+          totalsBlock.appendChild(totalLine);
+
+          detail.appendChild(totalsBlock);
         }
 
         const removeBtn = document.createElement("button");
