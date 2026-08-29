@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-08-29 | Version: 2.0.36
+Sidst opdateret: 2026-08-29 | Version: 2.0.39
 
 Indscan bon: sender et billede af en kassebon til Claude (vision) og får en
 struktureret udtrækning tilbage (butik, dato, varelinjer, total) - i stedet
@@ -52,15 +52,27 @@ _EXTRACT_TOOL = {
             "items": {
                 "type": "array",
                 "description": (
-                    "Hver enkelt varelinje på bonnen. Udelad selve pant-linjer "
-                    "og opsummeringslinjer (moms, total) - de skal ikke med "
-                    "som en 'vare'. Rabatlinjer ('RABAT', 'TILBUD' e.l. med et "
+                    "Hver enkelt varelinje på bonnen der HAR sit eget trykte "
+                    "beløb ud for sig. Udelad selve pant-linjer og "
+                    "opsummeringslinjer (moms, total) - de skal ikke med som "
+                    "en 'vare'. Rabatlinjer ('RABAT', 'TILBUD' e.l. med et "
                     "beløb og typisk et efterfølgende '-') skal IKKE med som "
                     "deres egen varelinje, men transskriberes præcist ind i "
                     "'discount' på varen de hører til - se feltets beskrivelse. "
-                    "REGN ALDRIG selv videre på tallene (ingen subtraktion, "
-                    "ingen division) - transskriber kun de tal der faktisk "
-                    "står trykt, ét ad gangen."
+                    "Hvis en tekstlinje IKKE har noget selvstændigt beløb "
+                    "trykt ud for sig (fx en fortsættelse af et langt "
+                    "varenavn på næste linje, en butiks-/kampagnetekst, eller "
+                    "en linje du er i tvivl om hører til), skal den IKKE "
+                    "oprettes som sin egen vare, og dens 'navn' må ALDRIG "
+                    "kombineres med et beløb der reelt hører til en anden "
+                    "linje - lån aldrig et beløb fra en nabolinje. Er en "
+                    "varelinjes navn skrevet på to linjer på bonnen (kun ét "
+                    "beløb for hele varen), er det ÉN vare, ikke to. REGN "
+                    "ALDRIG selv videre på tallene (ingen addition, "
+                    "subtraktion, multiplikation eller division) - hvert tal "
+                    "(price, quantity, discount) skal læses enkeltvis, "
+                    "uafhængigt af de andre tal på linjen, direkte fra det "
+                    "der faktisk står trykt."
                 ),
                 "items": {
                     "type": "object",
@@ -69,17 +81,33 @@ _EXTRACT_TOOL = {
                         "price": {
                             "type": "number",
                             "description": (
-                                "Prisen PRÆCIS SOM DEN STÅR TRYKT ud for "
-                                "varelinjen (kvantitet inkluderet, FØR evt. "
-                                "rabat) - transskriber tallet, regn IKKE selv "
-                                "rabatten fra. Eksempel: '2 x 49,00 ... 98,00' "
-                                "-> price = 98.00 (ikke 75, ikke 49 - kun det "
-                                "tal der reelt står ud for linjen)."
+                                "Det SELVSTÆNDIGE totalbeløb PRÆCIS SOM DET "
+                                "STÅR TRYKT ud for varelinjen (før evt. "
+                                "rabat) - læs dette tal direkte, transskriber "
+                                "det ikke ud fra en udregning. Hvis bonnen "
+                                "ALSO viser en linje som '2 x 49,00' for "
+                                "samme vare, skal du IKKE gange 2 med 49,00 "
+                                "for at få price, og heller ikke dividere "
+                                "price med antal for at gætte stykprisen - "
+                                "begge tal (stykpris og totalpris) skal "
+                                "aflæses hver for sig, direkte fra det der er "
+                                "trykt. Eksempel: linjen viser '2 x 49,00' og "
+                                "totalen '98,00' -> price = 98.00 (det trykte "
+                                "totalbeløb, ikke 2×49 udregnet af dig - hvis "
+                                "de to tal ikke stemmer overens fordi et af "
+                                "dem er svært at læse, så brug det totalbeløb "
+                                "der faktisk står trykt ud for varelinjen, "
+                                "ikke et udregnet tal)."
                             ),
                         },
                         "quantity": {
                             "type": "number",
-                            "description": "Antal/mængde hvis angivet på bonnen, ellers 1.",
+                            "description": (
+                                "Antal/mængde PRÆCIS SOM DET STÅR TRYKT (fx "
+                                "'2' fra '2 x 49,00'), ellers 1. Kun til "
+                                "visning - brug det ALDRIG til selv at "
+                                "udregne 'price'."
+                            ),
                         },
                         "discount": {
                             "type": "number",
@@ -116,7 +144,19 @@ _SYSTEM_PROMPT = (
     "udregning - transskriber udelukkende de tal der faktisk står trykt på "
     "bonnen, hver for sig ('price' = linjens egen trykte pris, 'discount' = "
     "rabatlinjens eget trykte beløb). Appen regner selv videre på tallene "
-    "bagefter."
+    "bagefter. "
+    "TO FLERE VIGTIGE REGLER, bekræftet nødvendige af rigtige fejlscanninger: "
+    "(1) Gang eller divider ALDRIG selv tal sammen for at udfylde et felt - "
+    "hvis en vare viser både en stykpris-linje ('2 x 49,00') og en samlet "
+    "pris ('98,00'), skal 'price' være det trykte totalbeløb aflæst direkte, "
+    "IKKE 2×49 udregnet af dig, og 'quantity' må aldrig bruges til at "
+    "udregne 'price'. Hvert tal på bonnen skal læses for sig selv, uafhængigt "
+    "af de andre tal på samme linje. (2) Opret kun en vare hvis der faktisk "
+    "står et selvstændigt beløb ud for linjen på bonnen - en tekstlinje uden "
+    "sit eget beløb (fx fortsættelse af et langt varenavn, eller en "
+    "informationstekst) må ALDRIG få tildelt et beløb der reelt hører til en "
+    "anden vare, og skal i stedet enten udelades eller lægges sammen med "
+    "varenavnet ovenover som ÉN vare."
 )
 
 
