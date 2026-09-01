@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.40 -->
+<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.41 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -650,7 +650,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.40</div>
+      <div id="menu-version">v2.0.41</div>
     </div>
   </div>
 
@@ -761,6 +761,10 @@
 
       <h2>Tidligere bonner</h2>
       <button id="refresh-receipts-button" style="width:100%; padding:12px; margin-bottom:12px; border:none; border-radius:8px; background:#2b6cb0; color:white; cursor:pointer;">🔄 Opdater</button>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button id="sort-receipts-date-button" style="flex:1; padding:10px; border:none; border-radius:8px; background:#edf2f7; color:#2b6cb0; cursor:pointer;">📅 Dato</button>
+        <button id="sort-receipts-name-button" style="flex:1; padding:10px; border:none; border-radius:8px; background:#edf2f7; color:#2b6cb0; cursor:pointer;">🔤 Navn</button>
+      </div>
       <div id="receipts-list" style="margin-bottom:28px;">Henter...</div>
 
       <h2>Prishistorik</h2>
@@ -2075,6 +2079,12 @@
     const receiptSaveFeedbackEl = document.getElementById("receipt-save-feedback");
 
     let pendingReceiptBlob = null;
+
+    // Holder de sidst hentede bonner client-side, så "Dato"/"Navn" kan
+    // omsortere og gentegne listen med det samme uden et nyt kald til
+    // /receipts - kun selve rækkefølgen ændres, ikke dataene.
+    let receiptsEntriesCache = [];
+    let receiptsSortMode = "date"; // "date" eller "name"
     let pendingReceiptRawModelOutput = null;
 
     // Åbner telefonens egen kamera-app direkte (via input[type=file][capture]).
@@ -2468,28 +2478,58 @@
           throw new Error(`Server svarede med status ${response.status}`);
         }
         const data = await response.json();
-        listEl.innerHTML = "";
-        if (data.entries.length === 0) {
-          listEl.textContent = "Ingen bonner registreret endnu.";
-          return;
-        }
-        for (const entry of data.entries) {
-          const card = document.createElement("div");
-          card.className = "receipt-card";
-          const dateStr = entry.purchase_date
-            ? new Date(entry.purchase_date).toLocaleDateString("da-DK")
-            : new Date(entry.created_at).toLocaleDateString("da-DK");
-          card.innerHTML = `
-            <div class="receipt-card-store">${entry.store_name}</div>
-            <div class="receipt-card-meta">${dateStr} · ${entry.item_count} vare(r)${entry.total != null ? ` · ${formatKr(entry.total)} kr` : ""}</div>
-          `;
-          card.addEventListener("click", () => toggleReceiptDetail(card, entry.id));
-          listEl.appendChild(card);
-        }
+        receiptsEntriesCache = data.entries;
+        renderReceiptsList();
       } catch (err) {
         listEl.textContent = `Fejl: kunne ikke hente bonner (${err.message})`;
       }
     }
+
+    // Tegner #receipts-list ud fra receiptsEntriesCache, sorteret efter
+    // receiptsSortMode - rører IKKE ved serveren, så "Dato"/"Navn" skifter
+    // rækkefølgen med det samme uden et nyt kald til /receipts.
+    function renderReceiptsList() {
+      const listEl = document.getElementById("receipts-list");
+      listEl.innerHTML = "";
+      if (receiptsEntriesCache.length === 0) {
+        listEl.textContent = "Ingen bonner registreret endnu.";
+        return;
+      }
+      const entries = [...receiptsEntriesCache];
+      if (receiptsSortMode === "name") {
+        entries.sort((a, b) => a.store_name.localeCompare(b.store_name, "da"));
+      } else {
+        // "date": bon-datoen hvis den findes, ellers scannings-tidspunktet -
+        // samme fallback som selve kortets datovisning - nyeste øverst.
+        entries.sort((a, b) => {
+          const dateA = a.purchase_date || a.created_at;
+          const dateB = b.purchase_date || b.created_at;
+          return new Date(dateB) - new Date(dateA);
+        });
+      }
+      for (const entry of entries) {
+        const card = document.createElement("div");
+        card.className = "receipt-card";
+        const dateStr = entry.purchase_date
+          ? new Date(entry.purchase_date).toLocaleDateString("da-DK")
+          : new Date(entry.created_at).toLocaleDateString("da-DK");
+        card.innerHTML = `
+          <div class="receipt-card-store">${entry.store_name}</div>
+          <div class="receipt-card-meta">${dateStr} · ${entry.item_count} vare(r)${entry.total != null ? ` · ${formatKr(entry.total)} kr` : ""}</div>
+        `;
+        card.addEventListener("click", () => toggleReceiptDetail(card, entry.id));
+        listEl.appendChild(card);
+      }
+    }
+
+    document.getElementById("sort-receipts-date-button").addEventListener("click", () => {
+      receiptsSortMode = "date";
+      renderReceiptsList();
+    });
+    document.getElementById("sort-receipts-name-button").addEventListener("click", () => {
+      receiptsSortMode = "name";
+      renderReceiptsList();
+    });
 
     async function toggleReceiptDetail(card, receiptId) {
       const existing = card.querySelector(".receipt-card-detail");

@@ -198,3 +198,6 @@
 ## 2.0.40
    - Alle kr-beløb i Indscan bon (gennemsynsskærm og bon-arkiv) vises nu konsekvent med 2 decimaler og komma som decimaltegn (fx "98,00 kr" i stedet for bare "98 kr") - gælder pris, rabat, stykpris, beregnet total/rabat total, total-tjekket og prishistorik. Ny `formatKr()`-hjælpefunktion; pris-/rabat-/total-inputfelterne udfyldes nu også med tvungne 2 decimaler, ikke kun de skrivebeskyttede visninger
 
+## 2.0.41
+   - Bon-arkivet ("Tidligere bonner") har nu to sorteringsknapper under "Opdater": "Dato" (nyeste bon-dato øverst) og "Navn" (alfabetisk efter butiksnavn). Skifter rækkefølgen med det samme uden et nyt kald til serveren - listen hentes stadig kun ved "Opdater"
+
