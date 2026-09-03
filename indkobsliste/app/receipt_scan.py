@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-08-29 | Version: 2.0.42
+Sidst opdateret: 2026-09-03 | Version: 2.0.43
 
 Indscan bon: sender et billede af en kassebon til Claude (vision) og får en
 struktureret udtrækning tilbage (butik, dato, varelinjer, total) - i stedet
@@ -210,10 +210,16 @@ def _parse_tool_result(response) -> dict:
     raise ReceiptScanError("Claude returnerede ikke et struktureret resultat - prøv igen.")
 
 
-def extract_receipt(image_bytes: bytes, media_type: str, api_key: str) -> dict:
-    """Sender bon-billedet til Claude og returnerer:
+def extract_receipt(images: list[tuple[bytes, str]], api_key: str) -> dict:
+    """Sender ét eller flere bon-billeder til Claude og returnerer:
     {"store_name": str, "purchase_date": str|None, "items": [...], "total": float|None,
      "raw_model_output": str}
+
+    `images` er en liste af (image_bytes, media_type) - normalt kun ét billede,
+    men ved lange bonner kan brugeren tage flere billeder (fx top og bund) af
+    SAMME bon via "+"-knappen i frontend; alle billeder sendes da samlet i én
+    besked, så Claude kan sammenstille varelinjerne fra dem til ÉN bon i
+    stedet for at behandle dem som separate bonner.
 
     Kræver internetadgang og en gyldig Anthropic API-nøgle (sat som add-on-
     option ANTHROPIC_API_KEY - se config.yaml). Rejser ReceiptScanError med en
@@ -227,14 +233,38 @@ def extract_receipt(image_bytes: bytes, media_type: str, api_key: str) -> dict:
             "Ingen Anthropic API-nøgle er sat op. Tilføj ANTHROPIC_API_KEY under "
             "add-on'ets Konfiguration-fane i Home Assistant, og genstart add-on'et."
         )
+    if not images:
+        raise ReceiptScanError("Intet billede modtaget - prøv igen.")
 
     client = Anthropic(api_key=api_key)
-    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+
+    image_blocks = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": base64.b64encode(image_bytes).decode("ascii"),
+            },
+        }
+        for image_bytes, media_type in images
+    ]
+    if len(images) > 1:
+        instruction_text = (
+            f"Disse {len(images)} billeder viser SAMME kassebon, fotograferet i "
+            "flere dele (fx top og bund af en lang bon) - ikke flere separate "
+            "bonner. Udtræk butik, dato, varelinjer og total som var det ét "
+            "sammenhængende billede. Optræder en varelinje kun én gang i alt "
+            "på tværs af billederne (fx fordi to billeder overlapper lidt), "
+            "skal den også kun med én gang i resultatet - ikke duplikeret."
+        )
+    else:
+        instruction_text = "Udtræk butik, dato, varelinjer og total fra denne bon."
 
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             system=_SYSTEM_PROMPT,
             tools=[_EXTRACT_TOOL],
             tool_choice={"type": "tool", "name": "extract_receipt"},
@@ -242,17 +272,10 @@ def extract_receipt(image_bytes: bytes, media_type: str, api_key: str) -> dict:
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": image_b64,
-                            },
-                        },
+                        *image_blocks,
                         {
                             "type": "text",
-                            "text": "Udtræk butik, dato, varelinjer og total fra denne bon.",
+                            "text": instruction_text,
                         },
                     ],
                 }

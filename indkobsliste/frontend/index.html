@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-08-29 | Version: 2.0.42 -->
+<!-- Sidst opdateret: 2026-09-03 | Version: 2.0.43 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -650,7 +650,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.42</div>
+      <div id="menu-version">v2.0.43</div>
     </div>
   </div>
 
@@ -709,7 +709,10 @@
         herunder.
       </p>
       <input type="file" id="receipt-camera-input" accept="image/*" capture="environment" style="display:none;">
-      <button id="receipt-scan-button" style="width:100%; padding:18px; margin-bottom:8px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.2em;">📷 Scan bon</button>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <button id="receipt-scan-button" style="flex:1; padding:18px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.2em;">📷 Scan bon</button>
+        <button id="receipt-scan-add-button" title="Lang bon - flere billeder" style="width:56px; border:none; border-radius:10px; background:#2b6cb0; color:white; cursor:pointer; font-size:1.5em; line-height:1;">+</button>
+      </div>
       <button id="receipt-manual-button" style="width:100%; padding:12px; margin-bottom:8px; border:none; border-radius:8px; background:#e2e8f0; color:#333; cursor:pointer;">✏️ Indtast manuelt i stedet</button>
       <div id="receipt-scan-status" style="text-align:center; color:#555; min-height:1.4em; margin-bottom:8px;"></div>
       <div id="receipt-scan-choice" style="display:none; gap:8px; margin-bottom:12px;"></div>
@@ -2055,9 +2058,9 @@
     }
 
     // --- Indscan bon ---
-    // Billedet forlader aldrig telefonens hukommelse, før det (evt. gen-)
-    // sendes til /receipts/scan - det gemmes ALDRIG på serveren. pendingReceiptBlob
-    // holdes klar til "Prøv igen", så en fejlet scanning ikke kræver et nyt billede.
+    // Billederne forlader aldrig telefonens hukommelse, før de (evt. gen-)
+    // sendes til /receipts/scan - de gemmes ALDRIG på serveren. pendingReceiptBlobs
+    // holdes klar til "Prøv igen", så en fejlet scanning ikke kræver nye billeder.
 
     // Formaterer et kr-beløb med præcis 2 decimaler og komma som decimaltegn
     // (fx 98 -> "98,00", 21.95 -> "21,95") - bruges alle steder et beløb vises
@@ -2068,6 +2071,7 @@
 
     const receiptCameraInput = document.getElementById("receipt-camera-input");
     const receiptScanButton = document.getElementById("receipt-scan-button");
+    const receiptScanAddButton = document.getElementById("receipt-scan-add-button");
     const receiptManualButton = document.getElementById("receipt-manual-button");
     const receiptScanStatusEl = document.getElementById("receipt-scan-status");
     const receiptScanChoiceEl = document.getElementById("receipt-scan-choice");
@@ -2078,7 +2082,11 @@
     const receiptTotalInput = document.getElementById("receipt-total-input");
     const receiptSaveFeedbackEl = document.getElementById("receipt-save-feedback");
 
-    let pendingReceiptBlob = null;
+    // Normalt kun ét billede pr. bon. Ved lange bonner (se "+"-knappen)
+    // samler receiptMultiImageMode flere billeder op i denne liste, FØR de
+    // sendes samlet til Claude i ét kald - se uploadReceiptScan().
+    let pendingReceiptBlobs = [];
+    let receiptMultiImageMode = false;
 
     // Holder de sidst hentede bonner client-side, så "Dato"/"Navn" kan
     // omsortere og gentegne listen med det samme uden et nyt kald til
@@ -2095,18 +2103,48 @@
     // (v2.0.25). Telefonens egen kamera-app har i forvejen sin egen
     // lys/blitz-knap, som brugeren selv kan trykke på ved behov - ingen
     // kode nødvendig for det.
-    receiptScanButton.addEventListener("click", () => receiptCameraInput.click());
+    receiptScanButton.addEventListener("click", () => {
+      receiptMultiImageMode = false;
+      pendingReceiptBlobs = [];
+      receiptCameraInput.click();
+    });
+
+    // "+"-knappen: til lange bonner, hvor ét billede ikke fanger det hele
+    // læseligt. Slår "flere billeder"-tilstand til FØR første billede tages -
+    // se receiptCameraInput's change-handler for selve opsamlingen.
+    receiptScanAddButton.addEventListener("click", () => {
+      receiptMultiImageMode = true;
+      pendingReceiptBlobs = [];
+      receiptCameraInput.click();
+    });
 
     receiptCameraInput.addEventListener("change", async () => {
       const file = receiptCameraInput.files[0];
       receiptCameraInput.value = ""; // så samme fil kan vælges igen senere
       if (!file) return;
-      pendingReceiptBlob = await compressReceiptImage(file);
-      await uploadReceiptScan();
+      pendingReceiptBlobs.push(await compressReceiptImage(file));
+
+      if (receiptMultiImageMode) {
+        // Ikke send til Claude endnu - spørg om der er mere af bonnen,
+        // eller om de indsamlede billeder tilsammen dækker det hele.
+        showReceiptChoice(
+          `📷 ${pendingReceiptBlobs.length} billede(r) klar. Er hele bonnen med nu, eller er der mere?`,
+          [
+            { label: "✅ Færdig", onClick: () => {
+              receiptMultiImageMode = false;
+              uploadReceiptScan();
+            }},
+            { label: "➕ Fortsæt", style: "secondary", onClick: () => receiptCameraInput.click() },
+          ]
+        );
+      } else {
+        await uploadReceiptScan();
+      }
     });
 
     receiptManualButton.addEventListener("click", () => {
-      pendingReceiptBlob = null;
+      pendingReceiptBlobs = [];
+      receiptMultiImageMode = false;
       pendingReceiptRawModelOutput = null;
       openReceiptReview({ store_name: "", purchase_date: null, items: [], total: null });
     });
@@ -2168,7 +2206,9 @@
 
       try {
         const formData = new FormData();
-        formData.append("file", pendingReceiptBlob, "bon.jpg");
+        pendingReceiptBlobs.forEach((blob, i) => {
+          formData.append("files", blob, `bon-${i + 1}.jpg`);
+        });
         const response = await fetch(`${API_BASE}/receipts/scan`, {
           method: "POST",
           body: formData,
@@ -2404,7 +2444,8 @@
 
     function closeReceiptReview() {
       receiptReviewBox.style.display = "none";
-      pendingReceiptBlob = null;
+      pendingReceiptBlobs = [];
+      receiptMultiImageMode = false;
       pendingReceiptRawModelOutput = null;
     }
 

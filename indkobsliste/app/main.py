@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-08-29 | Version: 2.0.36
+# Sidst opdateret: 2026-09-03 | Version: 2.0.43
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -1167,12 +1167,13 @@ def _upsert_receipt_translation(raw_name: str, correct_text: str, session: Sessi
 
 
 @app.post("/receipts/scan")
-async def scan_receipt(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def scan_receipt(files: list[UploadFile] = File(...), session: Session = Depends(get_session)):
     """
-    Tager imod et bon-billede, sender det til Claude, og returnerer det
-    UDLEDTE resultat - gemmer INTET i databasen her. Frontend viser
-    resultatet til gennemsyn/rettelse, og gemmer først via POST /receipts,
-    når brugeren aktivt godkender.
+    Tager imod ét eller flere bon-billeder (flere ved lange bonner, se
+    "+"-knappen i frontend - alle billeder skal da vise SAMME bon), sender
+    dem samlet til Claude, og returnerer det UDLEDTE resultat - gemmer
+    INTET i databasen her. Frontend viser resultatet til gennemsyn/rettelse,
+    og gemmer først via POST /receipts, når brugeren aktivt godkender.
 
     Svarer altid HTTP 200, med success/error i JSON-body i stedet for en
     4xx/5xx-statuskode - samme mønster som /diagnostics/*-endpoints, og af
@@ -1181,17 +1182,18 @@ async def scan_receipt(file: UploadFile = File(...), session: Session = Depends(
     brugeren (og dermed umuliggøre "prøv igen" vs. "indtast manuelt"-valget,
     som er selve pointen med denne fejlhåndtering).
     """
-    if file.content_type not in _ALLOWED_IMAGE_TYPES:
-        return {
-            "success": False,
-            "error": f"Filtypen '{file.content_type}' understøttes ikke - brug et almindeligt billedformat.",
-        }
+    for file in files:
+        if file.content_type not in _ALLOWED_IMAGE_TYPES:
+            return {
+                "success": False,
+                "error": f"Filtypen '{file.content_type}' understøttes ikke - brug et almindeligt billedformat.",
+            }
 
-    image_bytes = await file.read()
+    images = [(await file.read(), file.content_type) for file in files]
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     try:
-        result = extract_receipt(image_bytes, file.content_type, api_key)
+        result = extract_receipt(images, api_key)
     except ReceiptScanError as exc:
         return {"success": False, "error": str(exc)}
     except Exception as exc:  # uventet fejl - vis den stadig, i stedet for at fejle stille
