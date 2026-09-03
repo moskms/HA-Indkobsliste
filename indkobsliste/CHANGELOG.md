@@ -201,3 +201,6 @@
 ## 2.0.41
    - Bon-arkivet ("Tidligere bonner") har nu to sorteringsknapper under "Opdater": "Dato" (nyeste bon-dato øverst) og "Navn" (alfabetisk efter butiksnavn). Skifter rækkefølgen med det samme uden et nyt kald til serveren - listen hentes stadig kun ved "Opdater"
 
+## 2.0.42
+   - Rettet to nye fejlscanninger fra en rigtig Kvickly-bon: (1) momsopgørelseslinjen "HERAF 25% MOMS IALT 27,98" blev fejlagtigt oprettet som sin egen vare - promptet forbyder nu udtrykkeligt betalings-/opsummeringslinjer (MOMS, AT BETALE, BETALINGSKORT, KONTANT, BYTTEPENGE m.fl.) som varer, med et konkret eksempel på netop denne fejl; (2) tre "RABAT 6,95-"-linjer i træk under samme vare fik varen oprettet TRE gange (én pr. rabatlinje) i stedet for én gang med rabatterne lagt sammen - promptet har nu en udtrykkelig, snævert afgrænset regel om at lægge flere rabatbeløb for samme vare sammen til ét discount-tal, i stedet for at duplikere varen
+

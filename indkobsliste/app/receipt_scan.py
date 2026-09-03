@@ -1,5 +1,5 @@
 """
-Sidst opdateret: 2026-08-29 | Version: 2.0.39
+Sidst opdateret: 2026-08-29 | Version: 2.0.42
 
 Indscan bon: sender et billede af en kassebon til Claude (vision) og får en
 struktureret udtrækning tilbage (butik, dato, varelinjer, total) - i stedet
@@ -53,26 +53,36 @@ _EXTRACT_TOOL = {
                 "type": "array",
                 "description": (
                     "Hver enkelt varelinje på bonnen der HAR sit eget trykte "
-                    "beløb ud for sig. Udelad selve pant-linjer og "
-                    "opsummeringslinjer (moms, total) - de skal ikke med som "
-                    "en 'vare'. Rabatlinjer ('RABAT', 'TILBUD' e.l. med et "
-                    "beløb og typisk et efterfølgende '-') skal IKKE med som "
-                    "deres egen varelinje, men transskriberes præcist ind i "
-                    "'discount' på varen de hører til - se feltets beskrivelse. "
-                    "Hvis en tekstlinje IKKE har noget selvstændigt beløb "
-                    "trykt ud for sig (fx en fortsættelse af et langt "
-                    "varenavn på næste linje, en butiks-/kampagnetekst, eller "
-                    "en linje du er i tvivl om hører til), skal den IKKE "
-                    "oprettes som sin egen vare, og dens 'navn' må ALDRIG "
-                    "kombineres med et beløb der reelt hører til en anden "
-                    "linje - lån aldrig et beløb fra en nabolinje. Er en "
-                    "varelinjes navn skrevet på to linjer på bonnen (kun ét "
-                    "beløb for hele varen), er det ÉN vare, ikke to. REGN "
+                    "beløb ud for sig. Udelad selve pant-linjer og ALLE "
+                    "opsummerings-/betalingslinjer nederst på bonnen - disse "
+                    "er ALDRIG varer, uanset hvilket beløb der står ud for "
+                    "dem: linjer der starter med eller indeholder 'MOMS', "
+                    "'HERAF', 'IALT', 'TOTAL', 'AT BETALE', 'BETALINGSKORT', "
+                    "'KONTANT', 'BYTTEPENGE' eller lignende. Eksempel på en "
+                    "fejl der er set i praksis: en linje 'HERAF 25% MOMS "
+                    "IALT   27,98' blev fejlagtigt oprettet som sin egen vare "
+                    "med price=27.98 - det er en momsopgørelse, IKKE en vare, "
+                    "og skal aldrig med i 'items'. Rabatlinjer ('RABAT', "
+                    "'TILBUD' e.l. med et beløb og typisk et efterfølgende "
+                    "'-') skal IKKE med som deres egen varelinje, men "
+                    "transskriberes ind i 'discount' på varen de hører til - "
+                    "se feltets beskrivelse, inkl. reglen om FLERE "
+                    "RABAT-linjer efter samme vare. Hvis en tekstlinje IKKE "
+                    "har noget selvstændigt beløb trykt ud for sig (fx en "
+                    "fortsættelse af et langt varenavn på næste linje, en "
+                    "butiks-/kampagnetekst, eller en linje du er i tvivl om "
+                    "hører til), skal den IKKE oprettes som sin egen vare, og "
+                    "dens 'navn' må ALDRIG kombineres med et beløb der reelt "
+                    "hører til en anden linje - lån aldrig et beløb fra en "
+                    "nabolinje. Er en varelinjes navn skrevet på to linjer på "
+                    "bonnen (kun ét beløb for hele varen), er det ÉN vare, "
+                    "ikke to - opret ALDRIG flere kopier af samme vare. REGN "
                     "ALDRIG selv videre på tallene (ingen addition, "
                     "subtraktion, multiplikation eller division) - hvert tal "
                     "(price, quantity, discount) skal læses enkeltvis, "
                     "uafhængigt af de andre tal på linjen, direkte fra det "
-                    "der faktisk står trykt."
+                    "der faktisk står trykt - UNDTAGEN reglen om at LÆGGE "
+                    "FLERE RABAT-beløb sammen for samme vare, se 'discount'."
                 ),
                 "items": {
                     "type": "object",
@@ -115,9 +125,21 @@ _EXTRACT_TOOL = {
                                 "Beløbet PRÆCIS SOM DET STÅR TRYKT på en "
                                 "'RABAT'/'TILBUD'-linje lige under varen "
                                 "(positivt tal, uden minus - fx 6.95 hvis der "
-                                "står 'RABAT 6,95-'). Transskriber kun tallet, "
+                                "står 'RABAT 6,95-'). Transskriber tallet, "
                                 "regn ikke noget ud fra det. Udelad feltet "
-                                "helt hvis varen ikke har nogen rabatlinje."
+                                "helt hvis varen ikke har nogen rabatlinje. "
+                                "VIGTIG UNDTAGELSE, set i praksis på en rigtig "
+                                "bon: hvis der står FLERE 'RABAT'-linjer lige "
+                                "efter HINANDEN, umiddelbart under samme vare "
+                                "(før næste varenavn begynder) - fx tre "
+                                "linjer 'RABAT  6,95-' i træk under ÉN vare - "
+                                "hører de ALLE til den samme, ene vare. LÆG "
+                                "dem sammen til ÉT samlet discount-beløb for "
+                                "den ene vare (fx 6,95+6,95+6,95 = 20.85), og "
+                                "opret varen ÉN gang, ikke tre. Opret ALDRIG "
+                                "flere kopier af varen (én pr. RABAT-linje) - "
+                                "det er den samme vare med flere rabatter, "
+                                "ikke flere varer."
                             ),
                         },
                     },
@@ -156,7 +178,17 @@ _SYSTEM_PROMPT = (
     "sit eget beløb (fx fortsættelse af et langt varenavn, eller en "
     "informationstekst) må ALDRIG få tildelt et beløb der reelt hører til en "
     "anden vare, og skal i stedet enten udelades eller lægges sammen med "
-    "varenavnet ovenover som ÉN vare."
+    "varenavnet ovenover som ÉN vare. "
+    "TO YDERLIGERE REGLER, bekræftet nødvendige af en rigtig fejlscanning: "
+    "(3) Nederst på bonnen står ofte betalings-/opsummeringslinjer som "
+    "'HERAF 25% MOMS IALT', 'AT BETALE', 'BETALINGSKORT', 'KONTANT' eller "
+    "'BYTTEPENGE' - disse har et beløb ud for sig ligesom en vare, men er "
+    "IKKE varer og må ALDRIG med i 'items', uanset hvor oplagt det ser ud "
+    "til at have et 'eget' beløb. (4) Nogle bonner viser flere "
+    "'RABAT'-linjer i træk under ÉN vare (fx tre '6,95-'-linjer efter "
+    "samme vare) - det er STADIG kun én vare, ikke tre. Læg de flere "
+    "rabatbeløb sammen til ét samlet discount-tal for den ene vare, og "
+    "opret IKKE en kopi af varen for hver RABAT-linje."
 )
 
 
