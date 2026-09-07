@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-08-28 (v2.0.33) -->
+<!-- Sidst opdateret: 2026-09-03 (v2.0.43) -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -33,17 +33,24 @@ udløbspåmindelse.
   lægges automatisk tilbage på selve indkøbslisten. Hvert kort har også en
   "🛒 Fjern + køb igen"-knap, til når du har brugt det sidste af noget og
   skal have mere
-- **Indscan bon** – tag et billede af en kassebon med telefonens kamera, og
-  Claude (vision) udleder butik, dato, varer og priser som struktureret
-  tekst – **billedet gemmes aldrig**, hverken permanent eller midlertidigt.
-  Du ser altid resultatet til gennemsyn/rettelse, før noget gemmes (samme
-  "godkend før gem"-princip som Over dato). Rummer også et arkiv over
-  tidligere bonner, og et prishistorik-opslag pr. vare på tværs af alle
-  bonner. Kræver en Anthropic API-nøgle – se
+- **Indscan bon** – tag et billede af en kassebon med telefonens kamera (eller
+  flere billeder af samme bon ved lange kvitteringer, via "+"-knappen ved
+  siden af "Scan bon" – tag et billede, vælg "Færdig" eller "Fortsæt", gentag
+  efter behov), og Claude (vision) udleder butik, dato, varer og priser som
+  struktureret tekst – **billedet gemmes aldrig**, hverken permanent eller
+  midlertidigt. Claude transskriberer udelukkende de tal der faktisk står
+  trykt på bonnen (ingen egen udregning eller gætteri); appen beregner selv
+  nettopriser og rabat-totaler, og en live "Total stemmer/stemmer ikke"-kontrol
+  i gennemsynsskærmen advarer FØR bonnen gemmes, hvis varelinjernes sum ikke
+  matcher bonnens egen totalsum – typisk tegn på en fejllæst pris. Du ser
+  altid resultatet til gennemsyn/rettelse, før noget gemmes (samme "godkend
+  før gem"-princip som Over dato). Rummer også et arkiv over tidligere bonner
+  (sorterbart efter dato eller navn), og et prishistorik-opslag pr. vare på
+  tværs af alle bonner. Kræver en Anthropic API-nøgle – se
   ["Indscan bon: Anthropic API-nøgle"](#indscan-bon-anthropic-api-nøgle)
   nedenfor. Rabat pr. vare (fx "RABAT 6,95-" lige under en vare, almindeligt
-  hos bl.a. Føtex) fanges nu korrekt – varens gemte pris er hvad der faktisk
-  blev betalt, ikke listeprisen, og "Rabat i alt" vises i bon-arkivet
+  hos bl.a. Føtex) fanges korrekt og vises som "Rabat total" i bon-arkivet.
+  Alle kr-beløb vises konsekvent med 2 decimaler og dansk komma (fx "98,00 kr")
 - **Bon-oversættelser** – kassebon-tekst er ofte forkortet/kryptisk (fx
   "3st ROASTBEEF"). I bon-arkivet kan hver varelinje få en manuel
   oversættelse til almindelig tekst; den gemmes i en global ordbog, så
@@ -240,6 +247,14 @@ til git.
 - [x] Rød/gul statusmarkering på Over dato (rød på udløbsdatoen, gul derefter)
 - [x] Manuel bon-tekst-oversættelsesordbog (kun synlig på desktop), anvendt
       automatisk ved fremtidige scanninger og i prishistorik-matching
+- [x] Ren transskription (ingen egen udregning) af priser/rabat ved
+      bon-scanning, med et aktivt total-mismatch-tjek i gennemsynsskærmen
+      der advarer om en formodet fejllæst pris, før bonnen gemmes
+- [x] Flerbilledescanning af lange bonner – flere billeder af samme bon
+      sendes samlet til Claude og sammenstilles til én bon
+- [x] Sortering af bon-arkivet efter dato eller butiksnavn
+- [x] Konsekvent kr-beløbsformattering (2 decimaler, dansk komma) gennem
+      hele Indscan bon
 
 ## Status – hvad mangler
 
