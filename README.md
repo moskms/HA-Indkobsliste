@@ -103,6 +103,11 @@ indkobsliste/
 
 ## Installation
 
+> Bruger du en Claude-agent til selve installationen (fx "installer dette
+> add-on for mig"), findes der en dedikeret instruktionsfil til den:
+> [CLAUDE.md](CLAUDE.md). Trinene nedenfor er skrevet til et menneske, der
+> selv klikker sig igennem.
+
 ### 1. Home Assistant (selve add-on'et)
 
 1. Gå til **Settings → Add-ons → Add-on Store**
