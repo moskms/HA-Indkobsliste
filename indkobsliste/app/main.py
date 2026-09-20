@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-09-20 | Version: 2.0.44
+# Sidst opdateret: 2026-09-20 | Version: 2.0.46
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -60,34 +60,69 @@ def root():
     return {"status": "ok", "app": "indkobsliste"}
 
 
-def sync_item_to_ha(name: str) -> None:
+def mirror_list_to_ha(session: Session) -> None:
     """
-    Tilføjer varen til Home Assistants egen to-do-liste (todo.indkobsliste),
-    så Nabu/Assist kan læse den fulde liste op, uanset om varen blev
-    tilføjet via telefonen eller via stemmen (v2.0.44).
+    Spejler Home Assistants egen to-do-liste (todo.indkobsliste) så den til
+    enhver tid matcher PRÆCIS app'ens aktive (ikke-afkrydsede) varer -
+    tilføjer det der mangler i HA, OG fjerner det i HA der ikke længere er
+    aktivt i appen (afkrydset, slettet, eller aldrig kom fra appen). App'ens
+    liste er den eneste autoritative kilde, siden vi endnu ikke har den
+    anden retning (HA -> appen). Erstatter den tidligere kun-tilføjende
+    sync_item_to_ha() fra v2.0.44 (v2.0.46).
+
+    Kaldes efter enhver ændring af den aktive liste: tilføjelse (manuelt,
+    stemme, eller "Fjern + køb igen"), afkrydsning, sletning, og automatisk
+    "over dato"-tilbageførsel. Kaldes IKKE ved /restore (backup-gendannelse),
+    for ikke at overskrive HA's liste med en gammel backup.
 
     Fejler stille i loggen hvis Home Assistant ikke kan nås - må aldrig
-    forhindre at varen bliver gemt i selve appen. Samme mønster som
-    SUPERVISOR_TOKEN-kaldet i /diagnostics/ha-position.
+    forhindre at ændringen bliver gemt i selve appen. Samme SUPERVISOR_TOKEN-
+    mønster som /diagnostics/ha-position.
     """
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
         logger.warning(
-            "Kan ikke synkronisere '%s' til Home Assistants liste - SUPERVISOR_TOKEN mangler "
-            "(er 'homeassistant_api: true' sat i config.yaml, og er add-on'et genstartet siden?)",
-            name,
+            "Kan ikke spejle listen til Home Assistant - SUPERVISOR_TOKEN mangler "
+            "(er 'homeassistant_api: true' sat i config.yaml, og er add-on'et genstartet siden?)"
         )
         return
 
-    url = "http://supervisor/core/api/services/todo/add_item"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    payload = {"entity_id": "todo.indkobsliste", "item": name}
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=5)
-        response.raise_for_status()
+        get_response = requests.post(
+            "http://supervisor/core/api/services/todo/get_items?return_response",
+            headers=headers,
+            json={"entity_id": "todo.indkobsliste"},
+            timeout=5,
+        )
+        get_response.raise_for_status()
+        ha_items = get_response.json()["service_response"]["todo.indkobsliste"]["items"]
+        ha_names = {i["summary"] for i in ha_items}
+
+        app_names = set(
+            session.exec(select(Item.name).where(Item.done == False)).all()  # noqa: E712
+        )
+
+        for name in ha_names - app_names:
+            remove_response = requests.post(
+                "http://supervisor/core/api/services/todo/remove_item",
+                headers=headers,
+                json={"entity_id": "todo.indkobsliste", "item": name},
+                timeout=5,
+            )
+            remove_response.raise_for_status()
+
+        for name in app_names - ha_names:
+            add_response = requests.post(
+                "http://supervisor/core/api/services/todo/add_item",
+                headers=headers,
+                json={"entity_id": "todo.indkobsliste", "item": name},
+                timeout=5,
+            )
+            add_response.raise_for_status()
     except Exception as exc:
-        logger.warning("Kunne ikke synkronisere '%s' til Home Assistants liste: %s", name, exc)
+        logger.warning("Kunne ikke spejle listen til Home Assistants liste: %s", exc)
 
 
 @app.post("/items", response_model=Item)
@@ -100,7 +135,7 @@ def add_item(item_in: ItemCreate, session: Session = Depends(get_session)):
     session.add(item)
     session.commit()
     session.refresh(item)
-    sync_item_to_ha(item.name)
+    mirror_list_to_ha(session)
     return item
 
 
@@ -129,6 +164,7 @@ def mark_done(item_id: int, session: Session = Depends(get_session)):
     session.add(item)
     session.commit()
     session.refresh(item)
+    mirror_list_to_ha(session)
     return item
 
 
@@ -138,6 +174,7 @@ def delete_item(item_id: int, session: Session = Depends(get_session)):
     item = _get_item_or_404(item_id, session)
     session.delete(item)
     session.commit()
+    mirror_list_to_ha(session)
 
 
 @app.post("/stores", response_model=Store)
@@ -973,8 +1010,8 @@ def list_expiry_items(session: Session = Depends(get_session)):
             newly_added_names.append(shopping_name)
     session.commit()
 
-    for shopping_name in newly_added_names:
-        sync_item_to_ha(shopping_name)
+    if newly_added_names:
+        mirror_list_to_ha(session)
 
     all_items = session.exec(select(ExpiryItem).order_by(ExpiryItem.expiry_date)).all()
 
