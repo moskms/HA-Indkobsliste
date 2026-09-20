@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Sidst opdateret: 2026-09-20 | Version: 2.0.44 -->
+<!-- Sidst opdateret: 2026-09-20 | Version: 2.0.45 -->
 <html lang="da">
 <head>
   <meta charset="UTF-8">
@@ -80,7 +80,7 @@
       margin-top: auto;
       padding: 14px 20px;
       color: #aaa;
-      font-size: 0.85em;
+      font-size: 1.2em;
       border-top: 1px solid #eee;
     }
     .menu-item {
@@ -162,6 +162,30 @@
       color: #555;
       min-height: 1.4em;
       margin-bottom: 8px;
+    }
+    #text-add-row {
+      display: flex;
+      gap: 8px;
+      margin: 0 0 16px 0;
+    }
+    #text-add-input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+    }
+    #text-add-button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      background: #2b6cb0;
+      color: white;
+      cursor: pointer;
+    }
+    #text-add-button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
     }
     h2 {
       font-size: 1.2em;
@@ -650,7 +674,7 @@
       <button class="menu-item" data-view="notifications">📋 Notifikationer</button>
       <button class="menu-item" data-view="backup">💾 Backup</button>
       <button class="menu-item" data-view="settings">⚙️ Indstillinger</button>
-      <div id="menu-version">v2.0.44</div>
+      <div id="menu-version">v2.0.45</div>
     </div>
   </div>
 
@@ -667,6 +691,10 @@
     <div id="view-list" class="view active">
       <button id="mic-button">🎤 Tilføj vare</button>
       <div id="voice-feedback"></div>
+      <div id="text-add-row">
+        <input type="text" id="text-add-input" placeholder="...eller skriv varen her">
+        <button id="text-add-button">Tilføj</button>
+      </div>
       <button id="expiry-button">⏰ Over dato</button>
       <div id="expiry-voice-feedback"></div>
       <div id="status">Henter...</div>
@@ -1123,9 +1151,52 @@
       }
     }
 
-    // --- Stemmeinput ---
+    // --- Stemme- og tekstinput ---
     const micButton = document.getElementById("mic-button");
     const feedbackEl = document.getElementById("voice-feedback");
+    const textAddInput = document.getElementById("text-add-input");
+    const textAddButton = document.getElementById("text-add-button");
+
+    // Fælles for både stemme og tekst: sender varen til serveren, som selv
+    // sørger for at synkronisere den videre til Home Assistants egen liste
+    // (se sync_item_to_ha i app/main.py, v2.0.44).
+    async function submitNewItem(name) {
+      try {
+        const response = await fetch(`${API_BASE}/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (!response.ok) {
+          throw new Error(`Server svarede med status ${response.status}`);
+        }
+        feedbackEl.textContent = `Tilføjet: "${name}" ✓`;
+        loadItems();
+        return true;
+      } catch (err) {
+        feedbackEl.textContent = `Kunne ikke tilføje "${name}": ${err.message}`;
+        return false;
+      }
+    }
+
+    async function handleTextAdd() {
+      const name = textAddInput.value.trim();
+      if (!name) return;
+      textAddButton.disabled = true;
+      feedbackEl.textContent = `Tilføjer "${name}"...`;
+      await submitNewItem(name);
+      textAddButton.disabled = false;
+      textAddInput.value = "";
+      textAddInput.focus();
+    }
+
+    textAddButton.addEventListener("click", handleTextAdd);
+    textAddInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleTextAdd();
+      }
+    });
 
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -1159,21 +1230,7 @@
         feedbackEl.textContent = spokenText !== rawText
           ? `Hørte: "${rawText}" - rettet til "${spokenText}" - tilføjer...`
           : `Hørte: "${spokenText}" - tilføjer...`;
-
-        try {
-          const response = await fetch(`${API_BASE}/items`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: spokenText }),
-          });
-          if (!response.ok) {
-            throw new Error(`Server svarede med status ${response.status}`);
-          }
-          feedbackEl.textContent = `Tilføjet: "${spokenText}" ✓`;
-          loadItems();
-        } catch (err) {
-          feedbackEl.textContent = `Kunne ikke tilføje "${spokenText}": ${err.message}`;
-        }
+        await submitNewItem(spokenText);
       };
 
       micButton.addEventListener("click", () => {
