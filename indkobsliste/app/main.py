@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-09-20 | Version: 2.0.46
+# Sidst opdateret: 2026-09-20 | Version: 2.0.47
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -123,6 +123,56 @@ def mirror_list_to_ha(session: Session) -> None:
             add_response.raise_for_status()
     except Exception as exc:
         logger.warning("Kunne ikke spejle listen til Home Assistants liste: %s", exc)
+
+
+@app.get("/webhook/sync-from-ha")
+def sync_from_ha(session: Session = Depends(get_session)):
+    """
+    Anden retning af den to-vejs-synkronisering der blev aftalt ved v2.0.44
+    (v2.0.46 lavede app -> HA om til fuld spejling; dette er HA -> app,
+    v2.0.47). Kaldes af en HA-automation når Home Assistants egen liste
+    (todo.indkobsliste) ændres - fx en vare tilføjet direkte via Nabu/Assist
+    eller HA's eget to-do-kort, udenom appen.
+
+    Henter HA's nuværende varer, og opretter de der mangler i appen. Fjerner
+    IKKE noget fra appen selvom en vare mangler i HA - det er stadig kun
+    appens egne handlinger (afkrydsning/sletning), via mirror_list_to_ha(),
+    der bestemmer hvad der skal fjernes fra HA's liste. Returnerer altid 200
+    med status i JSON-body, samme mønster som appens øvrige webhooks
+    (Cloudflare overskriver ellers fejlkoder med sin egen fejlside).
+    """
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        logger.warning("Kan ikke hente Home Assistants liste - SUPERVISOR_TOKEN mangler")
+        return {"status": "error", "detail": "SUPERVISOR_TOKEN mangler"}
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    try:
+        get_response = requests.post(
+            "http://supervisor/core/api/services/todo/get_items?return_response",
+            headers=headers,
+            json={"entity_id": "todo.indkobsliste"},
+            timeout=5,
+        )
+        get_response.raise_for_status()
+        ha_items = get_response.json()["service_response"]["todo.indkobsliste"]["items"]
+        ha_names = {i["summary"] for i in ha_items}
+    except Exception as exc:
+        logger.warning("Kunne ikke hente Home Assistants liste: %s", exc)
+        return {"status": "error", "detail": str(exc)}
+
+    app_names = set(
+        session.exec(select(Item.name).where(Item.done == False)).all()  # noqa: E712
+    )
+
+    new_names = ha_names - app_names
+    for name in new_names:
+        session.add(Item(name=name))
+    if new_names:
+        session.commit()
+
+    return {"status": "ok", "new_items": sorted(new_names)}
 
 
 @app.post("/items", response_model=Item)
