@@ -1,4 +1,4 @@
-<!-- Sidst opdateret: 2026-09-03 (v2.0.43) -->
+<!-- Sidst opdateret: 2026-09-20 (v2.0.47) -->
 # HA Indkøbsliste
 
 Dansk indkøbsliste-app med stemmeinput og automatisk butiksgenkendelse via GPS.
@@ -25,6 +25,14 @@ udløbspåmindelse.
   minut om du er tæt på en kendt butik. Appen husker selv hvornår du sidst er
   blevet advaret, så du ikke får samme besked igen og igen, mens du står
   stille i butikken
+- **Synkronisering med Home Assistants egen liste** – Indkøbslisten
+  synkroniseres med Home Assistants indbyggede to-do-liste
+  (`todo.indkobsliste`), så Nabu/Assist kan læse den fulde liste op eller få
+  varer tilføjet med stemmen direkte i HA. App → HA er en fuld spejling
+  (varer der afkrydses/slettes i appen, forsvinder også fra HA's liste); HA →
+  app henter kun det der mangler ind i appen, uden at slette noget der.
+  Sidstnævnte retning kræver en ekstra automation i HA – se installation
+  nedenfor
 - **Over dato** – registrer varer derhjemme med en talt holdbarhedsdato via et
   popup-flow: sig varens navn → indtal dato → godkend eller prøv igen. Dansk
   datofortolkning forstår både ordenstal ("tolvte") og grundtal ("tolv"),
@@ -197,6 +205,40 @@ faktisk sender noget, endpointet sørger selv for kun én besked pr. dag:
         message: "{{ expiry_check.content.message }}"
 ```
 
+**Synkronisering med Home Assistants egen liste (`todo.indkobsliste`):**
+
+Retningen app → HA virker automatisk uden yderligere opsætning – appen
+bruger selv `SUPERVISOR_TOKEN` (kræver `homeassistant_api: true` i
+`config.yaml`, allerede sat som standard) til at spejle sin liste over til
+HA's indbyggede to-do-liste, hver gang en vare tilføjes, afkrydses eller
+slettes i appen.
+
+Retningen HA → app (så en vare tilføjet direkte i HA, fx via Nabu/Assist
+eller HA's eget to-do-kort, også dukker op i appen) kræver en ekstra
+`rest_command` (tilføjes som endnu en undernøgle i det samme block som
+ovenfor) og en ny automation:
+
+```yaml
+  indkobsliste_sync_from_ha:
+    url: "http://localhost:8000/webhook/sync-from-ha"
+    method: GET
+```
+
+```yaml
+- alias: Indkøbsliste - synkroniser fra HA til app
+  description: Kalder appen når Home Assistants egen indkøbsliste ændres, så nye varer tilføjet direkte i HA også kommer med i appen
+  trigger:
+    - platform: state
+      entity_id: todo.indkobsliste
+  action:
+    - service: rest_command.indkobsliste_sync_from_ha
+  mode: single
+```
+
+`todo.indkobsliste` er entity-id'et for HA's egen to-do-liste til dette
+add-on – bekræft det selv via Developer Tools → States, da det kan afvige
+hvis du har omdøbt add-on'et eller listen.
+
 ### 3. Telefonen
 
 1. Installer **Home Assistant Companion App** (Android/iOS) og log ind på din
@@ -260,6 +302,10 @@ til git.
 - [x] Sortering af bon-arkivet efter dato eller butiksnavn
 - [x] Konsekvent kr-beløbsformattering (2 decimaler, dansk komma) gennem
       hele Indscan bon
+- [x] To-vejs synkronisering med Home Assistants egen to-do-liste
+      (`todo.indkobsliste`): app → HA er en fuld spejling (tilføjer og
+      fjerner), HA → app henter nye varer ind uden at slette noget i appen
+      (kræver en ekstra automation i HA, se installation)
 
 ## Status – hvad mangler
 
