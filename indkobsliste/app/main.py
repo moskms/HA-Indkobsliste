@@ -1,4 +1,4 @@
-# Sidst opdateret: 2026-09-03 | Version: 2.0.43
+# Sidst opdateret: 2026-09-20 | Version: 2.0.44
 from contextlib import asynccontextmanager
 from typing import List, Optional
 from datetime import datetime, date, timedelta
@@ -43,6 +43,7 @@ from app.danish_date import parse_danish_date
 from app.receipt_scan import extract_receipt, ReceiptScanError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+logger = logging.getLogger("indkobsliste.main")
 
 
 @asynccontextmanager
@@ -59,6 +60,36 @@ def root():
     return {"status": "ok", "app": "indkobsliste"}
 
 
+def sync_item_to_ha(name: str) -> None:
+    """
+    Tilføjer varen til Home Assistants egen to-do-liste (todo.indkobsliste),
+    så Nabu/Assist kan læse den fulde liste op, uanset om varen blev
+    tilføjet via telefonen eller via stemmen (v2.0.44).
+
+    Fejler stille i loggen hvis Home Assistant ikke kan nås - må aldrig
+    forhindre at varen bliver gemt i selve appen. Samme mønster som
+    SUPERVISOR_TOKEN-kaldet i /diagnostics/ha-position.
+    """
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        logger.warning(
+            "Kan ikke synkronisere '%s' til Home Assistants liste - SUPERVISOR_TOKEN mangler "
+            "(er 'homeassistant_api: true' sat i config.yaml, og er add-on'et genstartet siden?)",
+            name,
+        )
+        return
+
+    url = "http://supervisor/core/api/services/todo/add_item"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {"entity_id": "todo.indkobsliste", "item": name}
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=5)
+        response.raise_for_status()
+    except Exception as exc:
+        logger.warning("Kunne ikke synkronisere '%s' til Home Assistants liste: %s", name, exc)
+
+
 @app.post("/items", response_model=Item)
 def add_item(item_in: ItemCreate, session: Session = Depends(get_session)):
     """Tilføjer en ny vare til indkøbslisten. Stort forbogstav sættes automatisk."""
@@ -69,6 +100,7 @@ def add_item(item_in: ItemCreate, session: Session = Depends(get_session)):
     session.add(item)
     session.commit()
     session.refresh(item)
+    sync_item_to_ha(item.name)
     return item
 
 
@@ -929,6 +961,7 @@ def list_expiry_items(session: Session = Depends(get_session)):
     today = date.today()
     all_items = session.exec(select(ExpiryItem).order_by(ExpiryItem.expiry_date)).all()
 
+    newly_added_names = []
     for item in all_items:
         if item.expiry_date < today and not item.added_to_shopping_list:
             shopping_name = item.name
@@ -937,7 +970,11 @@ def list_expiry_items(session: Session = Depends(get_session)):
             session.add(Item(name=shopping_name))
             item.added_to_shopping_list = True
             session.add(item)
+            newly_added_names.append(shopping_name)
     session.commit()
+
+    for shopping_name in newly_added_names:
+        sync_item_to_ha(shopping_name)
 
     all_items = session.exec(select(ExpiryItem).order_by(ExpiryItem.expiry_date)).all()
 
